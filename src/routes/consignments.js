@@ -4,7 +4,9 @@ const express = require("express");
 const db = require("../db");
 const { requireRole } = require("../auth");
 const { saveUpload, sendUpload } = require("../files");
-const { OWNERS, fail, clean, normalizeId, normalizeBarcode, validBarcode, isIsoDate } = require("../rules");
+const {
+  OWNERS, NO_DOCUMENT_REASON_MIN, fail, clean, normalizeId, normalizeBarcode, isAmdLabel, validBarcode, isIsoDate
+} = require("../rules");
 const { findAsset, activeUser, writeLog, serialTaken, readDetails } = require("./assets");
 
 const router = express.Router();
@@ -128,22 +130,31 @@ router.get("/documents/:docId", custodian, async (req, res) => {
   sendUpload(res, "consignments", doc.stored_name, doc.mime_type, doc.original_name);
 });
 
-// Inward: scan one item into the consignment. PO and arrival date come from the consignment.
+// Inward: scan or type one item into the consignment. PO and arrival date come from the consignment.
+// Items normally follow the scanned documents. When no document exists yet, a reason is required;
+// it goes into the item's history and the consignment stays under "Needs your attention" until uploaded.
 router.post("/consignments/:id/items", custodian, async (req, res) => {
   const barcode = normalizeBarcode(req.body.barcode);
   if (!validBarcode(barcode)) fail("Barcode must be 4 to 64 letters, digits, hyphens or underscores.");
   const details = readDetails(req.body);
   const holderId = normalizeId(req.body.holderId);
+  const noDocumentReason = clean(req.body.noDocumentReason, 200);
   const message = await db.transaction(async (conn) => {
     const locked = await conn.one("SELECT consignment_id FROM consignments WHERE consignment_id = ? FOR UPDATE",
       [Number(req.params.id) || 0]);
     if (!locked) fail("Consignment not found.", 404);
     const consignment = await loadConsignment(locked.consignment_id, conn);
-    if (!consignment.documentCount) fail("Upload the scanned invoice or delivery documents before adding items.");
+    if (!consignment.documentCount && noDocumentReason.length < NO_DOCUMENT_REASON_MIN) {
+      fail("Upload the scanned invoice or delivery document first, or tick \"No document yet\" and give the reason"
+        + " (at least " + NO_DOCUMENT_REASON_MIN + " characters).");
+    }
     if (consignment.scannedItems >= consignment.expectedItems) {
       fail("All " + consignment.expectedItems + " items are already scanned. Change the number of items if more came.");
     }
-    const ownership = OWNERS.includes(clean(req.body.ownership)) ? clean(req.body.ownership) : consignment.ownership;
+    const ownership = consignment.ownership;
+    if (isAmdLabel(barcode) && ownership !== "AMD-Specific") {
+      fail(barcode + " is an AMD asset label, but this consignment is " + ownership + ". Check the consignment.");
+    }
     const existing = await findAsset(barcode, conn);
     if (existing && existing.deletedAt) fail(barcode + " was deleted earlier. A Super Admin can restore it.");
     if (existing) fail(barcode + " is already on file. Open it from the asset list to edit it.");
@@ -157,16 +168,18 @@ router.post("/consignments/:id/items", custodian, async (req, res) => {
     }
     await conn.query(
       `INSERT INTO assets (barcode, ownership, asset_type, manufacturer, mfs_serial_no, make, model, capacity_rev,
-         description, po_number, arrival_date, expiry_date, location, status, holder_emp_id, consignment_id, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         description, po_number, bond_no, arrival_date, expiry_date, storage_room, location, status, holder_emp_id,
+         consignment_id, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [barcode, ownership, details.assetType, details.manufacturer || null, details.serialNo || null,
         details.make || null, details.model || null, details.capacityRev || null, details.description || null,
-        consignment.poNumber, consignment.receivedDate, details.expiryDate || null, details.location || null,
-        status, holderId || null, consignment.id, req.user.emp_id]
+        consignment.poNumber, details.bondNo || null, consignment.receivedDate, details.expiryDate || null,
+        details.room, details.location || null, status, holderId || null, consignment.id, req.user.emp_id]
     );
     await writeLog(conn, {
       barcode, action: "Inward", toHolder: holderId, toStatus: status, by: req.user.emp_id,
       remarks: "Inward on invoice " + consignment.invoiceNo + " / " + consignment.poNumber
+        + (consignment.documentCount ? "" : ". No document yet: " + noDocumentReason)
     });
     const count = consignment.scannedItems + 1;
     return "Saved " + barcode + ". " + count + " of " + consignment.expectedItems + " items scanned.";

@@ -5,7 +5,7 @@ const db = require("../db");
 const config = require("../config");
 const { requireUser, requireRole } = require("../auth");
 const {
-  OWNERS, STATUSES, ASSET_TYPES, fail, clean, normalizeId, normalizeBarcode, validBarcode, isIsoDate,
+  OWNERS, STATUSES, ASSET_TYPES, ROOMS, fail, clean, normalizeId, normalizeBarcode, validBarcode, isIsoDate,
   isoDay, expiryState, typeFromPrefix, familyPrefix, statusMoveAllowed, isCustodian, csvText
 } = require("../rules");
 
@@ -30,6 +30,12 @@ function scopeSql(user) {
   return { sql: "a.holder_emp_id = ?", params: [user.emp_id] };
 }
 
+// Where the item is now: with its user in the lab, or in its storage room.
+function placeOf(row) {
+  if (row.holder_emp_id) return "Lab (with " + row.holder_emp_id + ")";
+  return [row.storage_room, row.location].filter(Boolean).join(", ");
+}
+
 function mapAsset(row) {
   const today = isoDay(new Date());
   return {
@@ -46,7 +52,10 @@ function mapAsset(row) {
     arrivalDate: row.arrival_date || "",
     expiryDate: row.expiry_date || "",
     expiry: row.status === "Scrapped/Returned" ? "" : expiryState(row.expiry_date, today, config.expiryWarnMonths),
+    bondNo: row.bond_no || "",
+    room: row.storage_room || "",
     location: row.location || "",
+    place: placeOf(row),
     status: row.status,
     holderId: row.holder_emp_id || "",
     holderName: row.holder_name || "",
@@ -76,7 +85,7 @@ async function scopedAssets(user, filters = {}) {
   const search = clean(filters.search, 80);
   if (search) {
     where.push(`CONCAT_WS(' ', a.barcode, a.model, a.make, a.manufacturer, a.mfs_serial_no, a.description,
-      a.po_number, a.location, a.holder_emp_id, h.emp_name, t.team_name, c.invoice_no) LIKE ?`);
+      a.po_number, a.bond_no, a.storage_room, a.location, a.holder_emp_id, h.emp_name, t.team_name, c.invoice_no) LIKE ?`);
     params.push("%" + search.replace(/[\\%_]/g, "\\$&") + "%");
   }
   const rows = await db.query(ASSET_SELECT + " WHERE " + where.join(" AND ") + " ORDER BY a.barcode", params);
@@ -138,9 +147,12 @@ function readDetails(body) {
     capacityRev: clean(body.capacityRev, 80),
     description: clean(body.description, 500),
     expiryDate: clean(body.expiryDate),
+    bondNo: clean(body.bondNo, 40),
+    room: clean(body.room),
     location: clean(body.location, 80)
   };
   if (!ASSET_TYPES.includes(details.assetType)) fail("Choose an asset type.");
+  if (!ROOMS.includes(details.room)) fail("Choose the storage room: " + ROOMS.join(" or ") + ".");
   if (details.expiryDate && !isIsoDate(details.expiryDate)) fail("Expiry date must be a real date.");
   return details;
 }
@@ -160,21 +172,36 @@ router.get("/assets/suggest", requireRole("Super Admin", "Admin"), async (req, r
   if (!validBarcode(barcode)) fail("Barcode must be 4 to 64 letters, digits, hyphens or underscores.");
   const existing = await findAsset(barcode);
   if (existing) return res.json({ barcode, existing });
+  const columns = "barcode, asset_type, manufacturer, make, model, capacity_rev, description, bond_no, storage_room, location";
   const family = familyPrefix(barcode);
-  const sibling = await db.one(
-    `SELECT asset_type, manufacturer, make, model, capacity_rev, location FROM assets
-      WHERE barcode LIKE ? AND barcode <> ? ORDER BY created_at DESC LIMIT 1`,
-    [family.replace(/[\\%_]/g, "\\$&") + "%", barcode]
-  );
+  let source = "";
+  // Barcodes like MB-SP5-045 share a family prefix; EMBLAB labels are plain numbers, so use the
+  // item scanned last into the same consignment instead.
+  let sibling = family !== barcode ? await db.one(
+    `SELECT ${columns} FROM assets WHERE barcode LIKE ? AND barcode <> ? ORDER BY created_at DESC LIMIT 1`,
+    [family.replace(/[\\%_]/g, "\\$&") + "-%", barcode]
+  ) : null;
+  if (sibling) source = "the latest " + family + " item";
+  const consignmentId = Number(req.query.consignment) || 0;
+  if (!sibling && consignmentId) {
+    sibling = await db.one(
+      `SELECT ${columns} FROM assets WHERE consignment_id = ? ORDER BY created_at DESC, barcode DESC LIMIT 1`,
+      [consignmentId]);
+    if (sibling) source = sibling.barcode + ", the last item in this consignment";
+  }
+  const from = (key) => (sibling ? sibling[key] || "" : "");
   const fill = {
-    assetType: typeFromPrefix(barcode) || (sibling ? sibling.asset_type : ""),
-    manufacturer: sibling ? sibling.manufacturer || "" : "",
-    make: sibling ? sibling.make || "" : "",
-    model: sibling ? sibling.model || "" : "",
-    capacityRev: sibling ? sibling.capacity_rev || "" : "",
-    location: sibling ? sibling.location || "" : ""
+    assetType: typeFromPrefix(barcode) || from("asset_type"),
+    manufacturer: from("manufacturer"),
+    make: from("make"),
+    model: from("model"),
+    capacityRev: from("capacity_rev"),
+    description: from("description"),
+    bondNo: from("bond_no"),
+    room: from("storage_room"),
+    location: from("location")
   };
-  res.json({ barcode, existing: null, fill, source: sibling ? family : "" });
+  res.json({ barcode, existing: null, fill, source });
 });
 
 router.get("/assets/model-suggest", requireRole("Super Admin", "Admin"), async (req, res) => {
@@ -220,18 +247,20 @@ router.put("/assets/:barcode", requireRole("Super Admin", "Admin"), async (req, 
     }
     const labels = {
       ownership: "ownership", assetType: "type", manufacturer: "manufacturer", serialNo: "serial", make: "make",
-      model: "model", capacityRev: "capacity/rev", description: "description", expiryDate: "expiry", location: "location"
+      model: "model", capacityRev: "capacity/rev", description: "description", expiryDate: "expiry", bondNo: "bond no",
+      room: "room", location: "location"
     };
     const next = { ...details, ownership };
     const changed = Object.keys(labels).filter((key) => String(asset[key] || "") !== String(next[key] || ""));
     if (!changed.length) fail("Nothing was changed.");
     await conn.query(
       `UPDATE assets SET ownership = ?, asset_type = ?, manufacturer = ?, mfs_serial_no = ?, make = ?, model = ?,
-         capacity_rev = ?, description = ?, expiry_date = ?, location = ?, revision = revision + 1
+         capacity_rev = ?, description = ?, expiry_date = ?, bond_no = ?, storage_room = ?, location = ?,
+         revision = revision + 1
        WHERE barcode = ?`,
       [ownership, details.assetType, details.manufacturer || null, details.serialNo || null, details.make || null,
         details.model || null, details.capacityRev || null, details.description || null, details.expiryDate || null,
-        details.location || null, barcode]
+        details.bondNo || null, details.room, details.location || null, barcode]
     );
     await writeLog(conn, {
       barcode, action: "Edit", fromHolder: asset.holderId, toHolder: asset.holderId, fromStatus: asset.status,
@@ -319,11 +348,11 @@ router.post("/assets/:barcode/restore", requireRole("Super Admin"), async (req, 
 router.get("/export/inventory.csv", requireUser, async (req, res) => {
   const rows = await scopedAssets(req.user, req.query);
   const header = ["Barcode", "Ownership", "Asset Type", "Model", "Status", "Holder ID", "Holder Name", "Team",
-    "Location", "Invoice No", "PO Number", "Manufacturer", "Serial No", "Make", "Capacity / Rev", "Description",
-    "Arrival Date", "Expiry Date"];
+    "Where now", "Storage Room", "Cupboard / Shelf", "Invoice No", "PO Number", "Bond No", "Manufacturer", "Serial No",
+    "Make", "Capacity / Rev", "Description", "Arrival Date", "Expiry Date"];
   const body = rows.map((a) => [a.barcode, a.ownership, a.assetType, a.model, a.status, a.holderId, a.holderName,
-    a.teamName, a.location, a.invoiceNo, a.poNumber, a.manufacturer, a.serialNo, a.make, a.capacityRev,
-    a.description, a.arrivalDate, a.expiryDate]);
+    a.teamName, a.place, a.room, a.location, a.invoiceNo, a.poNumber, a.bondNo, a.manufacturer, a.serialNo, a.make,
+    a.capacityRev, a.description, a.arrivalDate, a.expiryDate]);
   sendCsv(res, "LabInventory", [header, ...body]);
 });
 

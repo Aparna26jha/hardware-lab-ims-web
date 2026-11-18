@@ -7,6 +7,7 @@ const db = require("./db");
 const { loadUser } = require("./auth");
 const { AppError } = require("./rules");
 const { scheduleDailyBackup } = require("./backup");
+const { upgradeTables } = require("./migrate");
 
 function log(message) {
   console.log(new Date().toISOString().replace("T", " ").slice(0, 19) + "  " + message);
@@ -57,6 +58,8 @@ function createApp() {
 
 async function start() {
   await db.query("SELECT 1");
+  const added = await upgradeTables(db.pool);
+  if (added.length) log("Added new columns: " + added.join(", ") + ".");
   await db.query("DELETE FROM sessions WHERE expires_at < NOW()");
   const app = createApp();
   app.listen(config.port, config.host, () => {

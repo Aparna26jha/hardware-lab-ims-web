@@ -5,12 +5,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 const mysql = require("mysql2/promise");
 const config = require("../src/config");
+const { upgradeTables } = require("../src/migrate");
 
 async function main() {
   const conn = await mysql.createConnection({ ...config.db, multipleStatements: true });
   const schema = fs.readFileSync(path.join(config.root, "db", "schema.sql"), "utf8");
   await conn.query(schema);
+  const added = await upgradeTables(conn);
   await conn.end();
+  if (added.length) console.log("Added new columns: " + added.join(", ") + ".");
   console.log("Tables are ready in database " + config.db.database + ".");
 
   if (process.argv.includes("--sample")) {

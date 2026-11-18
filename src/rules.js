@@ -3,7 +3,11 @@
 const ROLES = ["Super Admin", "Admin", "Lead Admin", "User"];
 const OWNERS = ["AMD-Specific", "Wipro-Specific"];
 const STATUSES = ["Available in Lab", "Assigned to Engineer", "Under Maintenance", "Scrapped/Returned"];
-const ASSET_TYPES = ["Motherboard", "Add-in Card", "Debugger", "SoC Board", "Power Supply", "Cable", "Other"];
+const ASSET_TYPES = ["Motherboard", "Add-in Card", "Debugger", "SoC Board", "Power Supply", "Cable", "Storage Drive",
+  "Peripheral", "Other"];
+// Where items are kept while nobody holds them. Assigned items are with their user in the lab.
+const ROOMS = ["2A Inventory Room", "Store Room"];
+const NO_DOCUMENT_REASON_MIN = 10;
 const FEEDBACK_KINDS = ["Issue", "Improvement", "Bug", "Suggestion", "Others"];
 const FEEDBACK_STATUSES = ["New", "In review", "Done"];
 const FEEDBACK_TITLE_MIN = 15;
@@ -39,8 +43,14 @@ function normalizeId(value) {
   return String(value ?? "").trim().toUpperCase().replace(/\s+/g, "");
 }
 
+// Code 39 labels print *EMBLAB30890*; some scanners send the asterisks too.
 function normalizeBarcode(value) {
-  return String(value ?? "").toUpperCase().replace(/[\s\r\n\t]+/g, "");
+  return String(value ?? "").toUpperCase().replace(/[\s\r\n\t*]+/g, "");
+}
+
+// AMD asset labels: "AMD INDIA PVT LTD", barcode EMBLAB followed by digits.
+function isAmdLabel(code) {
+  return /^EMBLAB\d+$/.test(code);
 }
 
 function validAlias(alias) {
@@ -150,9 +160,9 @@ function csvText(rows) {
 }
 
 module.exports = {
-  ROLES, OWNERS, STATUSES, ASSET_TYPES, FEEDBACK_KINDS, FEEDBACK_STATUSES,
-  FEEDBACK_TITLE_MIN, FEEDBACK_DESCRIPTION_MIN,
-  AppError, fail, clean, normalizeId, normalizeBarcode, validAlias, validBarcode, isMailId,
+  ROLES, OWNERS, STATUSES, ASSET_TYPES, ROOMS, FEEDBACK_KINDS, FEEDBACK_STATUSES,
+  FEEDBACK_TITLE_MIN, FEEDBACK_DESCRIPTION_MIN, NO_DOCUMENT_REASON_MIN,
+  AppError, fail, clean, normalizeId, normalizeBarcode, isAmdLabel, validAlias, validBarcode, isMailId,
   isIsoDate, isoDay, addMonths, expiryState, typeFromPrefix, familyPrefix, statusMoveAllowed,
   isCustodian, checkAccessCode, checkFeedback, csvCells, csvText
 };

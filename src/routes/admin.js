@@ -8,8 +8,8 @@ const { backupNow, latestBackup } = require("../backup");
 const { saveUpload, sendUpload } = require("../files");
 const { loadSample } = require("../sample");
 const {
-  ROLES, OWNERS, STATUSES, ASSET_TYPES, FEEDBACK_KINDS, FEEDBACK_STATUSES, FEEDBACK_TITLE_MIN,
-  FEEDBACK_DESCRIPTION_MIN, fail, clean, isCustodian, checkFeedback
+  ROLES, OWNERS, STATUSES, ASSET_TYPES, ROOMS, FEEDBACK_KINDS, FEEDBACK_STATUSES, FEEDBACK_TITLE_MIN,
+  FEEDBACK_DESCRIPTION_MIN, NO_DOCUMENT_REASON_MIN, fail, clean, isCustodian, checkFeedback
 } = require("../rules");
 const { scopedAssets, recentActivity } = require("./assets");
 const { openRequests } = require("./requests");
@@ -24,7 +24,8 @@ router.get("/settings", (req, res) => {
     expiryWarnMonths: config.expiryWarnMonths,
     feedbackTitleMin: FEEDBACK_TITLE_MIN,
     feedbackDescriptionMin: FEEDBACK_DESCRIPTION_MIN,
-    roles: ROLES, owners: OWNERS, statuses: STATUSES, assetTypes: ASSET_TYPES,
+    noDocumentReasonMin: NO_DOCUMENT_REASON_MIN,
+    roles: ROLES, owners: OWNERS, statuses: STATUSES, assetTypes: ASSET_TYPES, rooms: ROOMS,
     feedbackKinds: FEEDBACK_KINDS, feedbackStatuses: FEEDBACK_STATUSES
   });
 });

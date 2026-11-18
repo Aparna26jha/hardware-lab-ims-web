@@ -119,7 +119,7 @@ It prints `Tables are ready` and `Sample data loaded`.
 npm start
 ```
 
-It prints `Hardware Lab IMS v2.1.0 (development) is running on port 8080`. On the server, open Edge at `http://localhost:8080` and sign in as `SA001`, code `1001`.
+It prints `Hardware Lab IMS v2.2.0 (development) is running on port 8080`. On the server, open Edge at `http://localhost:8080` and sign in as `SA001`, code `1001`.
 
 Press **Ctrl+C** in the Command Prompt to stop it again.
 
@@ -198,12 +198,14 @@ In production, the sample buttons and **Reset sample data** are switched off. Lo
 1. Task Scheduler → right-click `Hardware Lab IMS (dev)` → **End**.
 2. Take a backup (`npm run backup`).
 3. Replace the app files with the new version. Keep `.env`, `node_modules` and `logs`.
-4. Run `npm install --omit=dev`, then `npm run init-db`. The second command only creates tables that are missing and never deletes data.
+4. Run `npm install --omit=dev`, then `npm run init-db`. The second command only creates missing tables and adds missing columns; it never deletes data. (The app also adds missing columns by itself when it starts.)
 5. Right-click the task → **Run**.
 
 Test a new version on the development copy first, then repeat these steps on production.
 
-The version number (from `package.json`) shows at the bottom of every page, for example `Hardware Lab IMS v2.1.0 · development`. After an update, check it to confirm the new version is running, and ask testers to include it when they report a problem.
+On the development copy, select **Accounts → Reset sample data** after an update to see the newest sample lab. Items recorded before version 2.2 have no storage room yet; the first time an Admin edits one, the IMS asks for it.
+
+The version number (from `package.json`) shows at the bottom of every page, for example `Hardware Lab IMS v2.2.0 · development`. After an update, check it to confirm the new version is running, and ask testers to include it when they report a problem.
 
 ## Troubleshooting
 

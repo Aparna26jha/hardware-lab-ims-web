@@ -269,8 +269,11 @@ async function dashboardHtml() {
     showTeams ? api("GET", "/api/teams") : Promise.resolve([])
   ]);
   const c = dash.counts;
-  const cards = [["Total", c.total, ""], ["Available", c.available, ""], ["Assigned", c.assigned, ""],
-    ["Under maintenance", c.maintenance, ""], ["AMD-Specific", c.amd, "amd"], ["Wipro-Specific", c.wipro, "wipro"]];
+  // [label, count, colour, ownership filter, status filter]
+  const cards = [["Total", c.total, "", "", ""], ["Available", c.available, "", "", "Available in Lab"],
+    ["Assigned", c.assigned, "", "", "Assigned to Engineer"], ["Under maintenance", c.maintenance, "", "", "Under Maintenance"],
+    ["AMD-Specific", c.amd, "amd", "AMD-Specific", ""], ["Wipro-Specific", c.wipro, "wipro", "Wipro-Specific", ""]];
+  const onlyCardFilters = !state.filters.type && !state.filters.team && !state.filters.search;
   const attention = dash.attention.length
     ? dash.attention.map((a) => `<li><button type="button" data-action="attention" data-go="${esc(a.go || "")}" data-id="${esc(a.id || "")}" data-barcode="${esc(a.barcode || "")}">
         <span class="tag ${esc(a.kind)}">${esc(a.tag)}</span> ${esc(a.text)}</button></li>`).join("")
@@ -298,14 +301,18 @@ async function dashboardHtml() {
     ${isSuper() ? `<button class="btn secondary small" type="button" data-action="backup">Back up now</button>
       <span class="fine">Last backup: ${esc(dash.lastBackup ? when(dash.lastBackup) : "none yet")}</span>` : ""}`;
   return `
-    <div class="cards">${cards.map(([label, n, kind]) => `<div class="kpi ${kind}"><strong>${n}</strong><span>${esc(label)}</span></div>`).join("")}</div>
+    <div class="cards">${cards.map(([label, n, kind, owner, status]) => {
+      const active = onlyCardFilters && state.filters.owner === owner && state.filters.status === status;
+      return `<button type="button" class="kpi ${kind}" data-action="card-filter" data-owner="${esc(owner)}" data-status="${esc(status)}"
+        aria-pressed="${active}" title="Show these items in the hardware list"><strong>${n}</strong><span>${esc(label)}</span></button>`;
+    }).join("")}</div>
     <div class="duo ${dash.activity ? "" : "single"}">
       <div class="box"><h3>Needs your attention</h3><ul>${attention}</ul>
         <p class="fine">Expiry warnings start ${s.expiryWarnMonths} months before the expiry date.</p></div>
       ${activity}
     </div>
     ${teamTable}
-    <h3>Hardware list</h3>
+    <h3 id="hardware-list">Hardware list</h3>
     <form id="filter-form" class="filters">
       <div><label for="f-owner">Ownership</label><select id="f-owner" data-filter>${options(s.owners, f.owner, "All")}</select></div>
       <div><label for="f-status">Status</label><select id="f-status" data-filter>${options(s.statuses, f.status, "All")}</select></div>
@@ -323,7 +330,7 @@ async function dashboardHtml() {
         <td>${ownerPill(a.ownership)}</td><td>${esc(a.assetType)}</td><td>${esc(a.model)}</td><td class="mono">${esc(a.serialNo)}</td>
         <td>${esc(a.status)}${expiryPill(a)}</td>
         <td>${a.holderId ? esc(a.holderId) + "<br><span class='fine'>" + esc(a.holderName) + "</span>" : "-"}</td>
-        <td>${esc(a.teamName)}</td><td>${esc(a.location)}</td></tr>`).join("") || `<tr><td colspan="9">No hardware matches.</td></tr>`}
+        <td>${esc(a.teamName)}</td><td>${esc(a.place)}</td></tr>`).join("") || `<tr><td colspan="9">No hardware matches.</td></tr>`}
     </tbody></table></div>`;
 }
 
@@ -342,9 +349,12 @@ function detailsFormHtml(prefix, a, fixedOwnership) {
       <div><label for="${prefix}-mfr">Manufacturer</label><input id="${prefix}-mfr" maxlength="80" value="${esc(a.manufacturer)}"></div>
       <div><label for="${prefix}-serial">Manufacturer serial no.</label><input id="${prefix}-serial" maxlength="80" value="${esc(a.serialNo)}"></div>
       <div><label for="${prefix}-rev">Capacity / revision</label><input id="${prefix}-rev" maxlength="80" value="${esc(a.capacityRev)}"></div>
-      <div><label for="${prefix}-location">Location (for example CPU cupboard 3)</label><input id="${prefix}-location" maxlength="80" value="${esc(a.location)}"></div>
+      <div><label for="${prefix}-room">Storage room <span class="req">*</span></label>
+        <select id="${prefix}-room">${options(s.rooms, a.room, "Choose")}</select></div>
+      <div><label for="${prefix}-location">Cupboard / shelf (for example CPU cupboard 3)</label><input id="${prefix}-location" maxlength="80" value="${esc(a.location)}"></div>
+      <div><label for="${prefix}-bond">Bond No. (from the AMD label)</label><input id="${prefix}-bond" maxlength="40" value="${esc(a.bondNo)}" placeholder="For example 266/2026-27 or NA"></div>
       <div><label for="${prefix}-expiry">Expiry date (optional)</label><input id="${prefix}-expiry" type="date" value="${esc(a.expiryDate)}"></div>
-      <div class="span-3"><label for="${prefix}-desc">Description</label><input id="${prefix}-desc" maxlength="500" value="${esc(a.description)}"></div>
+      <div class="span-3"><label for="${prefix}-desc">Description (the text printed on the label)</label><input id="${prefix}-desc" maxlength="500" value="${esc(a.description)}"></div>
     </div>`;
 }
 
@@ -357,7 +367,9 @@ function readDetails(prefix) {
     manufacturer: val(prefix + "-mfr"),
     serialNo: val(prefix + "-serial"),
     capacityRev: val(prefix + "-rev"),
+    room: val(prefix + "-room"),
     location: val(prefix + "-location"),
+    bondNo: val(prefix + "-bond"),
     expiryDate: val(prefix + "-expiry"),
     description: val(prefix + "-desc")
   };
@@ -377,8 +389,10 @@ async function assetHtml() {
     ["Make / manufacturer", esc([a.make, a.manufacturer].filter(Boolean).join(" / "))], ["Serial no.", esc(a.serialNo)],
     ["Capacity / revision", esc(a.capacityRev)], ["Description", esc(a.description)],
     ["Status", esc(a.status) + expiryPill(a)], ["Holder", a.holderId ? esc(a.holderId + " " + a.holderName) : "Nobody (in the cage)"],
-    ["Team", esc(a.teamName)], ["Location", esc(a.location)], ["Expiry date", esc(a.expiryDate || "Not set")],
-    ["Invoice / PO", esc([a.invoiceNo, a.poNumber].filter(Boolean).join(" / "))], ["Arrived", esc(a.arrivalDate)]];
+    ["Team", esc(a.teamName)], ["Where now", esc(a.place)],
+    ["Kept in (when free)", esc([a.room, a.location].filter(Boolean).join(", "))], ["Expiry date", esc(a.expiryDate || "Not set")],
+    ["Invoice / PO", esc([a.invoiceNo, a.poNumber].filter(Boolean).join(" / "))], ["Bond No.", esc(a.bondNo)],
+    ["Arrived", esc(a.arrivalDate)]];
   let html = `
     <div class="row"><button class="btn secondary small" type="button" data-action="tab" data-tab="dashboard">← Back to the list</button></div>
     <h2 class="mono">${esc(a.barcode)}</h2>
@@ -447,10 +461,19 @@ async function inwardHtml() {
 async function consignmentHtml() {
   const { consignment: c, documents, items } = await api("GET", "/api/consignments/" + state.consignmentId);
   const full = c.scannedItems >= c.expectedItems;
-  const canScan = documents.length > 0 && !full;
+  const canScan = !full;
   const fill = state.inwardFill || {};
-  const scanNote = !documents.length ? "Upload at least one scanned document first."
-    : full ? "All items are scanned. Raise the number of items above if more came in this package." : "";
+  const noDocs = !documents.length;
+  const scanNote = full ? "All items are scanned. Raise the number of items above if more came in this package."
+    : noDocs ? "Upload the scanned invoice or delivery note first. If there is no document yet, tick \"No document yet\" below and give the reason."
+    : "";
+  const noDocBlock = noDocs ? `
+            <div class="box warn-box">
+              <label class="check"><input id="it-nodoc" type="checkbox" ${fill.noDocumentReason ? "checked" : ""}> No document yet: add items now, upload the document later</label>
+              <label for="it-nodoc-reason">Reason (at least ${state.settings.noDocumentReasonMin} characters)</label>
+              <input id="it-nodoc-reason" maxlength="200" value="${esc(fill.noDocumentReason || "")}" placeholder="For example: invoice is with the purchase team">
+              <p class="fine">The reason is saved in each item's history, and this consignment stays under "Needs your attention" until a document is uploaded.</p>
+            </div>` : "";
   return `
     <div class="row"><button class="btn secondary small" type="button" data-action="close-consignment">← All consignments</button></div>
     <h2>Invoice ${esc(c.invoiceNo)} · PO ${esc(c.poNumber)}</h2>
@@ -483,9 +506,10 @@ async function consignmentHtml() {
         <p class="sub">${esc(scanNote || "Scan the barcode and press Enter. Known details fill in automatically.")}</p>
         <form id="item-form">
           <fieldset ${canScan ? "" : "disabled"} class="plain">
-            <label for="it-barcode">Barcode <span class="req">*</span></label><input id="it-barcode" maxlength="64" class="mono" value="${esc(fill.barcode || "")}" ${canScan ? "data-autofocus" : ""}>
-            ${detailsFormHtml("it", { ...fill, ownership: c.ownership }, true)}
-            <label for="it-holder">Give to (alias ID, optional)</label><input id="it-holder" maxlength="32" placeholder="Leave blank to keep it in the cage">
+            ${noDocBlock}
+            <label for="it-barcode">Barcode <span class="req">*</span></label><input id="it-barcode" maxlength="64" class="mono" value="${esc(fill.barcode || "")}" ${canScan ? "data-autofocus" : ""} placeholder="Scan, or type it, for example EMBLAB30890">
+            ${detailsFormHtml("it", { ...fill, room: fill.room || state.settings.rooms[0], ownership: c.ownership }, true)}
+            <label for="it-holder">Give to (alias ID, optional)</label><input id="it-holder" maxlength="32" placeholder="Leave blank to keep it in its storage room">
             <div class="row"><button class="btn" type="submit">Save item</button>
               <button class="btn secondary" type="button" data-action="clear-item">Clear</button></div>
           </fieldset>
@@ -513,7 +537,7 @@ async function transferHtml() {
       <dt>Item</dt><dd>${ownerPill(a.ownership)} ${esc(a.assetType)} · ${esc(a.model || "no model")}</dd>
       <dt>Current holder</dt><dd>${a.holderId ? esc(a.holderId + " " + a.holderName) + " (" + esc(a.teamName) + ")" : "Nobody (in the cage)"}</dd>
       <dt>Status</dt><dd>${esc(a.status)}${expiryPill(a)}</dd>
-      <dt>Location</dt><dd>${esc(a.location || "-")}</dd></dl>`;
+      <dt>Where now</dt><dd>${esc(a.place || "-")}</dd></dl>`;
     history = `<h3>History of ${esc(a.barcode)}</h3>${historyTable(state.transferHistory || [])}`;
   }
   return `
@@ -780,6 +804,11 @@ async function go(tab) {
   window.scrollTo(0, 0);
 }
 
+function showHardwareList() {
+  const heading = document.getElementById("hardware-list");
+  if (heading) heading.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 async function startApp() {
   state.me = await api("GET", "/api/me");
   state.view = "app";
@@ -805,11 +834,12 @@ async function loadTransfer(barcode) {
 }
 
 async function suggestInward() {
-  const barcode = val("it-barcode").toUpperCase().replace(/\s+/g, "");
+  const barcode = val("it-barcode").toUpperCase().replace(/[\s*]+/g, "");
   setVal("it-barcode", barcode);
   if (!barcode) return;
   try {
-    const data = await api("GET", "/api/assets/suggest?barcode=" + encodeURIComponent(barcode));
+    const data = await api("GET", "/api/assets/suggest?barcode=" + encodeURIComponent(barcode)
+      + "&consignment=" + encodeURIComponent(state.consignmentId || ""));
     if (data.existing) {
       flash(barcode + " is already on file (" + data.existing.model + "). Open it from the Dashboard to edit it.", "bad");
       return;
@@ -820,9 +850,12 @@ async function suggestInward() {
     fillIfEmpty("it-make", f.make);
     fillIfEmpty("it-model", f.model);
     fillIfEmpty("it-rev", f.capacityRev);
+    fillIfEmpty("it-desc", f.description);
+    fillIfEmpty("it-bond", f.bondNo);
+    if (f.room) setVal("it-room", f.room);
     fillIfEmpty("it-location", f.location);
-    flash(data.source ? "New barcode. Details were filled from the latest " + data.source + " item. Check them and add the serial number."
-      : "New barcode. Fill in the details.", "good");
+    flash(data.source ? "New barcode. Details were filled from " + data.source + ". Check them and add the serial number."
+      : "New barcode. Fill in the details from the label.", "good");
     document.getElementById("it-serial").focus();
   } catch (error) {
     flash(error.message, "bad");
@@ -899,11 +932,17 @@ const submitHandlers = {
   async "item-form"() {
     const details = readDetails("it");
     delete details.ownership;
+    const noDoc = document.getElementById("it-nodoc");
+    const noDocumentReason = noDoc && noDoc.checked ? val("it-nodoc-reason").trim() : "";
+    if (noDoc && !noDoc.checked) {
+      throw new Error("Upload the scanned document first, or tick \"No document yet\" and give the reason.");
+    }
     const result = await api("POST", "/api/consignments/" + state.consignmentId + "/items", {
-      barcode: val("it-barcode"), holderId: val("it-holder"), ...details
+      barcode: val("it-barcode"), holderId: val("it-holder"), noDocumentReason, ...details
     });
     const keep = { assetType: details.assetType, manufacturer: details.manufacturer, make: details.make, model: details.model,
-      capacityRev: details.capacityRev, location: details.location, expiryDate: details.expiryDate };
+      capacityRev: details.capacityRev, description: details.description, bondNo: details.bondNo, room: details.room,
+      location: details.location, expiryDate: details.expiryDate, noDocumentReason };
     state.inwardFill = keep;
     state.flash = { text: result.message + " Scan the next barcode.", kind: "good" };
     await paint();
@@ -1009,7 +1048,16 @@ const clickHandlers = {
   tab(el) { return go(el.dataset.tab); },
   "open-asset"(el) { state.barcode = el.dataset.barcode; return go("asset"); },
   "transfer-this"(el) { state.tab = "transfer"; return loadTransfer(el.dataset.barcode); },
-  "team-filter"(el) { state.filters.team = el.dataset.team; return paint(); },
+  async "team-filter"(el) {
+    state.filters.team = el.dataset.team;
+    await paint();
+    showHardwareList();
+  },
+  async "card-filter"(el) {
+    state.filters = { owner: el.dataset.owner, status: el.dataset.status, type: "", team: "", search: "" };
+    await paint();
+    showHardwareList();
+  },
   attention(el) {
     if (el.dataset.barcode) { state.barcode = el.dataset.barcode; return go("asset"); }
     if (el.dataset.go === "inward" && el.dataset.id) { state.consignmentId = Number(el.dataset.id); state.tab = "inward"; state.flash = null; return paint(); }

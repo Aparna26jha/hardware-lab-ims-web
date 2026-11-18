@@ -18,6 +18,10 @@ test("addMonths keeps the end of short months valid", () => {
 
 test("barcode helpers", () => {
   assert.equal(rules.normalizeBarcode(" mb-7800x-009\r\n"), "MB-7800X-009");
+  assert.equal(rules.normalizeBarcode("*EMBLAB30890*"), "EMBLAB30890");
+  assert.ok(rules.isAmdLabel("EMBLAB33836"));
+  assert.ok(!rules.isAmdLabel("EMBLAB-33836"));
+  assert.ok(!rules.isAmdLabel("MB-SP5-045"));
   assert.equal(rules.validBarcode("MB-7800X-009"), true);
   assert.equal(rules.validBarcode("AB"), false);
   assert.equal(rules.typeFromPrefix("AIC-NIC-1"), "Add-in Card");

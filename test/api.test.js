@@ -20,6 +20,7 @@ const config = require("../src/config");
 const db = require("../src/db");
 const { loadSample } = require("../src/sample");
 const { createApp } = require("../src/server");
+const { upgradeTables } = require("../src/migrate");
 
 const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF").toString("base64");
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]).toString("base64");
@@ -52,6 +53,10 @@ test.before(async () => {
   const tables = ["sessions", "hardware_requests", "feedback", "audit_log", "assets", "consignment_documents", "consignments", "directory", "users", "teams"];
   await conn.query("SET FOREIGN_KEY_CHECKS = 0; " + tables.map((t) => "DROP TABLE IF EXISTS " + t + ";").join(" ") + " SET FOREIGN_KEY_CHECKS = 1;");
   await conn.query(fs.readFileSync(path.join(config.root, "db", "schema.sql"), "utf8"));
+  // Start from the version 2.1 layout to check that an existing database is upgraded in place.
+  await conn.query("ALTER TABLE assets DROP COLUMN bond_no, DROP COLUMN storage_room");
+  assert.deepEqual(await upgradeTables(conn), ["assets.bond_no", "assets.storage_room"]);
+  assert.deepEqual(await upgradeTables(conn), [], "running the upgrade again changes nothing");
   await conn.end();
   await loadSample(true);
   server = createApp().listen(0);
@@ -86,7 +91,9 @@ test("each role sees the right hardware", async () => {
   const all = (await admin("GET", "/api/assets")).data;
   const leadList = (await lead("GET", "/api/assets")).data;
   const mine = (await user("GET", "/api/assets")).data;
-  assert.equal(all.length, 12);
+  assert.equal(all.length, 13);
+  assert.equal(all.find((a) => a.barcode === "MB-7800X-001").place, "Lab (with EN1042)");
+  assert.equal(all.find((a) => a.barcode === "MB-7800X-002").place, "2A Inventory Room, CPU cupboard 1");
   assert.ok(mine.every((a) => a.holderId === "EN1042"));
   assert.equal(mine.length, 3);
   assert.ok(leadList.some((a) => a.holderId === "EN1108"), "lead sees team member");
@@ -106,7 +113,7 @@ test("dashboard shows team totals, cage and 6-month expiry warnings", async () =
   const ipsi = dash.teams.find((t) => t.team === "IPSi");
   const cage = dash.teams.find((t) => t.teamId === "cage");
   assert.equal(ipsi.held, 4);
-  assert.equal(cage.held, 6);
+  assert.equal(cage.held, 7);
   const texts = dash.attention.map((a) => a.text).join(" | ");
   assert.match(texts, /EN2301/);
   assert.match(texts, /DBG-HDT-003 expired/);
@@ -130,9 +137,13 @@ test("inward by consignment: documents first, auto-fill, item limit", async () =
     invoiceNo: "INV-T-1", poNumber: "PO-T-1", receivedDate: "2026-11-14", expectedItems: 1, ownership: "AMD-Specific"
   });
   assert.match(duplicate.data.error, /already recorded/);
-  const item = { barcode: "MB-7800X-009", assetType: "Motherboard", serialNo: "SM-H13-10099" };
+  const item = { barcode: "MB-7800X-009", assetType: "Motherboard", serialNo: "SM-H13-10099", room: "2A Inventory Room" };
+  const noRoom = await admin("POST", "/api/consignments/" + id + "/items", { ...item, room: "" });
+  assert.match(noRoom.data.error, /storage room/);
   const early = await admin("POST", "/api/consignments/" + id + "/items", item);
   assert.match(early.data.error, /Upload the scanned/);
+  const shortReason = await admin("POST", "/api/consignments/" + id + "/items", { ...item, noDocumentReason: "later" });
+  assert.match(shortReason.data.error, /at least 10/);
   const badFile = await admin("POST", "/api/consignments/" + id + "/documents", { file: { name: "x.exe", data: Buffer.from("MZ....").toString("base64") } });
   assert.match(badFile.data.error, /Only PDF/);
   const upload = await admin("POST", "/api/consignments/" + id + "/documents", { file: { name: "invoice.pdf", data: PDF } });
@@ -144,10 +155,10 @@ test("inward by consignment: documents first, auto-fill, item limit", async () =
   assert.match(saved.data.message, /1 of 2/);
   const again = await admin("POST", "/api/consignments/" + id + "/items", item);
   assert.match(again.data.error, /already on file/);
-  const dupSerial = await admin("POST", "/api/consignments/" + id + "/items", { barcode: "MB-7800X-010", assetType: "Motherboard", serialNo: "SM-H13-10099" });
+  const dupSerial = await admin("POST", "/api/consignments/" + id + "/items", { barcode: "MB-7800X-010", assetType: "Motherboard", serialNo: "SM-H13-10099", room: "Store Room" });
   assert.match(dupSerial.data.error, /already recorded/);
-  await admin("POST", "/api/consignments/" + id + "/items", { barcode: "MB-7800X-010", assetType: "Motherboard" });
-  const over = await admin("POST", "/api/consignments/" + id + "/items", { barcode: "MB-7800X-011", assetType: "Motherboard" });
+  await admin("POST", "/api/consignments/" + id + "/items", { barcode: "MB-7800X-010", assetType: "Motherboard", room: "Store Room" });
+  const over = await admin("POST", "/api/consignments/" + id + "/items", { barcode: "MB-7800X-011", assetType: "Motherboard", room: "Store Room" });
   assert.match(over.data.error, /All 2 items/);
   const detail = (await admin("GET", "/api/consignments/" + id)).data;
   assert.equal(detail.items.length, 2);
@@ -159,6 +170,38 @@ test("inward by consignment: documents first, auto-fill, item limit", async () =
   assert.equal(doc.status, 401, "documents need sign-in");
   const lead = await session("LD200", "4001");
   assert.ok((await lead("GET", "/api/assets")).data.some((a) => a.barcode === "MB-7800X-009"), "lead sees new team item");
+});
+
+test("AMD EMBLAB labels, bond number, and inward before the document arrives", async () => {
+  const admin = await session("AD010", "2001");
+  const make = async (invoiceNo, ownership) => (await admin("POST", "/api/consignments", {
+    invoiceNo, poNumber: "PO-L-1", receivedDate: "2026-11-18", expectedItems: 3, ownership
+  })).data.id;
+  const amd = await make("INV-L-1", "AMD-Specific");
+  const wipro = await make("INV-L-2", "Wipro-Specific");
+  const label = {
+    barcode: "*emblab 70001*", assetType: "Peripheral", make: "Dell", description: "Dell Keyboard with Mouse",
+    bondNo: "NA", room: "Store Room", location: "Shelf 2", noDocumentReason: "Invoice is with the purchase team"
+  };
+  const wrongOwner = await admin("POST", "/api/consignments/" + wipro + "/items", label);
+  assert.match(wrongOwner.data.error, /EMBLAB70001 is an AMD asset label/);
+  const saved = await admin("POST", "/api/consignments/" + amd + "/items", label);
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  const asset = (await admin("GET", "/api/assets/EMBLAB70001")).data;
+  assert.equal(asset.asset.ownership, "AMD-Specific");
+  assert.equal(asset.asset.bondNo, "NA");
+  assert.equal(asset.asset.place, "Store Room, Shelf 2");
+  assert.match(asset.history[0].remarks, /No document yet: Invoice is with the purchase team/);
+  const suggest = (await admin("GET", "/api/assets/suggest?barcode=EMBLAB70002&consignment=" + amd)).data;
+  assert.equal(suggest.fill.description, "Dell Keyboard with Mouse");
+  assert.equal(suggest.fill.room, "Store Room");
+  assert.match(suggest.source, /EMBLAB70001/);
+  const found = (await admin("GET", "/api/assets?search=store%20room")).data;
+  assert.ok(found.some((a) => a.barcode === "EMBLAB70001"), "search finds the room");
+  const dash = (await admin("GET", "/api/dashboard")).data;
+  assert.ok(dash.attention.some((a) => /INV-L-1: 1 of 3 items scanned, documents missing/.test(a.text)));
+  const csv = (await admin("GET", "/api/export/inventory.csv")).data;
+  assert.match(csv, /"Bond No"/);
 });
 
 test("transfer rules and history", async () => {

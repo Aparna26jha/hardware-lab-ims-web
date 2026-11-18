@@ -1,6 +1,6 @@
 {
   "name": "hardware-lab-ims",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Hardware Lab Inventory Management System: browser app with a MySQL database",
   "private": true,
   "main": "src/server.js",

@@ -64,20 +64,25 @@ const CONSIGNMENTS = [
   { key: 3, invoice: "INV-AR-7741", po: "PO-AMD-26001", date: "2026-10-01", expected: 4, owner: "AMD-Specific", supplier: "ASRock Rack" }
 ];
 
-// [barcode, owner, type, manufacturer, serial, model, rev, description, po, arrival, expiry, location, status, holder, consignment]
+const INV = "2A Inventory Room";
+const STORE = "Store Room";
+
+// [barcode, owner, type, manufacturer, serial, model, rev, description, po, arrival, expiry, room, location, status, holder, consignment, bond]
+// The room and cupboard are where an item is kept when nobody holds it.
 const ASSETS = [
-  ["MB-7800X-001", "AMD-Specific", "Motherboard", "Supermicro", "SM-H13-10021", "H13SSL", "Rev 1.01", "SP5 validation motherboard for Genoa bring-up", "PO-AMD-24011", "2026-08-14", "2029-08-14", "Bench 4", "Assigned to Engineer", "EN1042", 1],
-  ["MB-7800X-002", "AMD-Specific", "Motherboard", "Supermicro", "SM-H13-10022", "H13SSL", "Rev 1.01", "Spare SP5 validation motherboard", "PO-AMD-24011", "2026-08-14", "2029-08-14", "CPU cupboard 1", "Available in Lab", null, 1],
-  ["SOC-MI300-014", "AMD-Specific", "SoC Board", "AMD", "MI300-VAL-014", "MI300X-VAL", "A1", "MI300 validation socket board", "PO-AMD-25102", "2026-09-02", "2028-09-02", "Bench 2", "Assigned to Engineer", "EN1108", null],
-  ["AIC-NIC-088", "AMD-Specific", "Add-in Card", "Broadcom", "BCM-57508-088", "BCM57508", "PCIe Gen4 x16", "100GbE adapter held for rework", "PO-AMD-23880", "2026-05-19", "2026-12-01", "Repair shelf", "Under Maintenance", null, null],
-  ["DBG-HDT-003", "AMD-Specific", "Debugger", "AMD", "HDT-PLUS-003", "HDT+", "FW 9.4", "HDT hardware debugger pod, calibration due", "PO-AMD-19002", "2025-11-03", "2026-10-31", "CPU cupboard 2", "Available in Lab", null, null],
-  ["PSU-2K4-021", "Wipro-Specific", "Power Supply", "Chroma", "CH-62012-021", "62012P", "600V / 8A", "Programmable bench supply owned by the Wipro lab bench", "PO-WPR-44190", "2026-01-22", "2031-01-22", "Bench 4", "Assigned to Engineer", "EN1042", 2],
-  ["CBL-PCIE-110", "Wipro-Specific", "Cable", "Molex", "MX-G5-110", "PCIe-G5", "1.0 m", "PCIe Gen5 riser cable", "PO-WPR-44102", "2026-03-11", null, "Cable rack A", "Available in Lab", null, null],
-  ["DBG-LA-017", "Wipro-Specific", "Debugger", "Tektronix", "TEK-TLA-017", "TLA6404", "Retired", "Logic analyzer returned after failed calibration", "PO-WPR-39811", "2024-06-01", "2026-06-01", null, "Scrapped/Returned", null, null],
-  ["SOC-FPGA-006", "Wipro-Specific", "SoC Board", "AMD", "XIL-VCU-006", "VCU118", "Rev 2.0", "FPGA characterization board on the Wipro bench", "PO-WPR-41020", "2026-04-09", "2029-04-09", "Bench 7", "Assigned to Engineer", "EN1200", null],
-  ["MB-SP5-044", "AMD-Specific", "Motherboard", "ASRock Rack", "ASR-SIENA-044", "SIENAD8", "Rev A", "Siena reference motherboard", "PO-AMD-26001", "2026-10-01", "2029-10-01", "CPU cupboard 3", "Available in Lab", null, 3],
-  ["AIC-GPU-002", "AMD-Specific", "Add-in Card", "AMD", "INST-VAL-002", "Instinct-VAL", "192GB", "Instinct validation accelerator card, loan ends March", "PO-AMD-25550", "2026-09-18", "2027-03-31", "Bench 4", "Assigned to Engineer", "EN1042", null],
-  ["CBL-JTAG-009", "AMD-Specific", "Cable", "Blackhawk", "BH-JTAG-009", "JTAG-14", "14-pin", "JTAG scan cable", "PO-AMD-18820", "2025-12-12", null, "Cable rack B", "Available in Lab", null, null]
+  ["MB-7800X-001", "AMD-Specific", "Motherboard", "Supermicro", "SM-H13-10021", "H13SSL", "Rev 1.01", "SP5 validation motherboard for Genoa bring-up", "PO-AMD-24011", "2026-08-14", "2029-08-14", INV, "CPU cupboard 1", "Assigned to Engineer", "EN1042", 1, "101/2026-27"],
+  ["MB-7800X-002", "AMD-Specific", "Motherboard", "Supermicro", "SM-H13-10022", "H13SSL", "Rev 1.01", "Spare SP5 validation motherboard", "PO-AMD-24011", "2026-08-14", "2029-08-14", INV, "CPU cupboard 1", "Available in Lab", null, 1, "101/2026-27"],
+  ["SOC-MI300-014", "AMD-Specific", "SoC Board", "AMD", "MI300-VAL-014", "MI300X-VAL", "A1", "MI300 validation socket board", "PO-AMD-25102", "2026-09-02", "2028-09-02", INV, "CPU cupboard 2", "Assigned to Engineer", "EN1108", null, "112/2026-27"],
+  ["AIC-NIC-088", "AMD-Specific", "Add-in Card", "Broadcom", "BCM-57508-088", "BCM57508", "PCIe Gen4 x16", "100GbE adapter held for rework", "PO-AMD-23880", "2026-05-19", "2026-12-01", STORE, "Repair shelf", "Under Maintenance", null, null, "NA"],
+  ["DBG-HDT-003", "AMD-Specific", "Debugger", "AMD", "HDT-PLUS-003", "HDT+", "FW 9.4", "HDT hardware debugger pod, calibration due", "PO-AMD-19002", "2025-11-03", "2026-10-31", INV, "CPU cupboard 2", "Available in Lab", null, null, "NA"],
+  ["PSU-2K4-021", "Wipro-Specific", "Power Supply", "Chroma", "CH-62012-021", "62012P", "600V / 8A", "Programmable bench supply owned by the Wipro lab bench", "PO-WPR-44190", "2026-01-22", "2031-01-22", STORE, "Rack 1", "Assigned to Engineer", "EN1042", 2, null],
+  ["CBL-PCIE-110", "Wipro-Specific", "Cable", "Molex", "MX-G5-110", "PCIe-G5", "1.0 m", "PCIe Gen5 riser cable", "PO-WPR-44102", "2026-03-11", null, STORE, "Cable rack A", "Available in Lab", null, null, null],
+  ["DBG-LA-017", "Wipro-Specific", "Debugger", "Tektronix", "TEK-TLA-017", "TLA6404", "Retired", "Logic analyzer returned after failed calibration", "PO-WPR-39811", "2024-06-01", "2026-06-01", STORE, null, "Scrapped/Returned", null, null, null],
+  ["SOC-FPGA-006", "Wipro-Specific", "SoC Board", "AMD", "XIL-VCU-006", "VCU118", "Rev 2.0", "FPGA characterization board on the Wipro bench", "PO-WPR-41020", "2026-04-09", "2029-04-09", INV, "CPU cupboard 4", "Assigned to Engineer", "EN1200", null, null],
+  ["MB-SP5-044", "AMD-Specific", "Motherboard", "ASRock Rack", "ASR-SIENA-044", "SIENAD8", "Rev A", "Siena reference motherboard", "PO-AMD-26001", "2026-10-01", "2029-10-01", INV, "CPU cupboard 3", "Available in Lab", null, 3, "135/2026-27"],
+  ["AIC-GPU-002", "AMD-Specific", "Add-in Card", "AMD", "INST-VAL-002", "Instinct-VAL", "192GB", "Instinct validation accelerator card, loan ends March", "PO-AMD-25550", "2026-09-18", "2027-03-31", INV, "CPU cupboard 5", "Assigned to Engineer", "EN1042", null, "120/2026-27"],
+  ["CBL-JTAG-009", "AMD-Specific", "Cable", "Blackhawk", "BH-JTAG-009", "JTAG-14", "14-pin", "JTAG scan cable", "PO-AMD-18820", "2025-12-12", null, STORE, "Cable rack B", "Available in Lab", null, null, "NA"],
+  ["EMBLAB90001", "AMD-Specific", "Peripheral", "Dell", null, "KM5221W", null, "Dell Keyboard with Mouse (sample AMD label)", "PO-AMD-24011", "2026-08-14", null, STORE, "Shelf 2", "Available in Lab", null, null, "NA"]
 ];
 
 // [when, barcode, action, from, to, fromStatus, toStatus, by, remarks]
@@ -152,13 +157,15 @@ async function loadSample(reset) {
       }
     }
     for (const a of ASSETS) {
-      const [barcode, owner, type, manufacturer, serial, model, rev, description, po, arrival, expiry, location, status, holder, key] = a;
+      const [barcode, owner, type, manufacturer, serial, model, rev, description, po, arrival, expiry, room, location,
+        status, holder, key, bond] = a;
       await conn.query(
         `INSERT INTO assets (barcode, ownership, asset_type, manufacturer, mfs_serial_no, make, model, capacity_rev, description,
-           po_number, arrival_date, expiry_date, location, status, holder_emp_id, consignment_id, created_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AD010', ?)`,
-        [barcode, owner, type, manufacturer, serial, manufacturer, model, rev, description, po, arrival, expiry, location,
-          status, holder, key ? consignmentIds[key] : null, arrival + " 09:30:00"]
+           po_number, bond_no, arrival_date, expiry_date, storage_room, location, status, holder_emp_id, consignment_id,
+           created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AD010', ?)`,
+        [barcode, owner, type, manufacturer, serial, manufacturer, model, rev, description, po, bond, arrival, expiry, room,
+          location, status, holder, key ? consignmentIds[key] : null, arrival + " 09:30:00"]
       );
       await conn.query(
         `INSERT INTO audit_log (logged_at, barcode, action, to_status, done_by, remarks)
