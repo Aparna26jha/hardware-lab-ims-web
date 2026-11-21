@@ -178,7 +178,7 @@ tr.bad-row td { background: #fbeaea; }
 tr.bad-row:hover td { background: #f6dcdc; }
 .box li.bad { background: #fbeaea; border-radius: 8px; padding-left: 6px; }
 .box li.bad button { color: var(--danger); font-weight: 600; }
-.box.ok-box { background: #f0f8f3; border-color: #bfe0cc; margin-bottom: 10px; display: flex; gap: 12px; align-items: center; }
+.box.ok-box { background: #f0f8f3; border-color: #bfe0cc; margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
 .box.attention-box { border-color: #e0a7a7; background: #fdf1f1; }
 .box.accept-box { border-color: #e5c99a; background: #fff8ee; margin-bottom: 14px; }
 .box.accept-box ul { max-height: none; }

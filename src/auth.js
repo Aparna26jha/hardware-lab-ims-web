@@ -24,6 +24,16 @@ function codeMatches(code, stored) {
   return crypto.timingSafeEqual(expected, actual);
 }
 
+// Easy to read out or type: no 0/O, 1/l/I.
+const FIRST_PASSWORD_LETTERS = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function firstPassword() {
+  const bytes = crypto.randomBytes(8);
+  let text = "";
+  for (const byte of bytes) text += FIRST_PASSWORD_LETTERS[byte % FIRST_PASSWORD_LETTERS.length];
+  return "Lab-" + text;
+}
+
 function tokenHash(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
@@ -84,19 +94,25 @@ function readCookie(req) {
   return "";
 }
 
+// Someone signed in with a first password given by a Super Admin may only choose their own password.
+const FIRST_PASSWORD_PATHS = new Set(["/me", "/me/password", "/login", "/logout", "/register", "/settings"]);
+
 // Finds the signed-in person for this request, or leaves req.user empty.
 async function loadUser(req, res, next) {
   req.user = null;
   const token = readCookie(req);
   if (token) {
     req.user = await db.one(
-      `SELECT u.emp_id, u.emp_name, u.email, u.role, u.team_id, t.team_name
+      `SELECT u.emp_id, u.emp_name, u.email, u.role, u.team_id, u.must_change, t.team_name
          FROM sessions s
          JOIN users u ON u.emp_id = s.emp_id
          LEFT JOIN teams t ON t.team_id = u.team_id
         WHERE s.token_hash = ? AND s.expires_at > NOW() AND u.active = 1 AND u.approval = 'Approved'`,
       [tokenHash(token)]
     );
+  }
+  if (req.user && req.user.must_change && !FIRST_PASSWORD_PATHS.has(req.path)) {
+    throw new AppError(403, "Choose your own password first.");
   }
   next();
 }
@@ -115,6 +131,6 @@ function requireRole(...roles) {
 }
 
 module.exports = {
-  hashCode, codeMatches, startSession, endSession, endAllSessions, loadUser, requireUser, requireRole,
+  hashCode, codeMatches, firstPassword, startSession, endSession, endAllSessions, loadUser, requireUser, requireRole,
   lockedMinutes, noteFailure, clearFailures
 };

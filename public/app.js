@@ -71,6 +71,21 @@ function fillIfEmpty(id, value) {
   if (node && !node.value && value) node.value = value;
 }
 
+function downloadCsv(name, rows) {
+  const cell = (value) => {
+    const text = String(value ?? "");
+    return /^[=+\-@]/.test(text) ? `"'${text.replace(/"/g, '""')}"` : `"${text.replace(/"/g, '""')}"`;
+  };
+  const blob = new Blob(["\ufeff" + rows.map((row) => row.map(cell).join(",")).join("\r\n")], { type: "text/csv" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
 function checked(id) {
   const node = document.getElementById(id);
   return !!node && node.checked;
@@ -322,6 +337,7 @@ async function paint() {
   const mine = ++paintCount;
   if (state.view === "login") root.innerHTML = loginHtml();
   else if (state.view === "register") root.innerHTML = registerHtml();
+  else if (state.view === "first-password") root.innerHTML = firstPasswordHtml();
   else {
     if (state.flash) {
       toast(state.flash.text, state.flash.kind);
@@ -365,6 +381,27 @@ function loginHtml() {
       </form>
       ${flashHtml()}
       ${demo}
+      <p class="fine">${esc(versionText())}</p>
+    </section></div>`;
+}
+
+function firstPasswordHtml() {
+  const min = state.settings ? state.settings.passwordMin : 8;
+  return `
+    <div class="auth-screen"><section class="card">
+      <div class="brand"><div class="mark">IMS</div><div><h1>Choose your own password</h1>
+        <div class="sub">Welcome, ${esc(state.me.name)}. You signed in with a first password. Choose your own before you start.</div></div></div>
+      <form id="first-password-form" autocomplete="off">
+        <label for="fp-current">First password (the one you were given) <span class="req">*</span></label>
+        <input id="fp-current" type="password" maxlength="64" autocomplete="current-password">
+        <label for="fp-next">New password (at least ${min} characters) <span class="req">*</span></label>
+        <input id="fp-next" type="password" maxlength="64" autocomplete="new-password">
+        <label for="fp-confirm">New password again <span class="req">*</span></label>
+        <input id="fp-confirm" type="password" maxlength="64" autocomplete="new-password">
+        <div class="row"><button class="btn" type="submit">Save and continue</button>
+          <button class="btn secondary" type="button" data-action="logout">Sign out</button></div>
+      </form>
+      ${flashHtml()}
       <p class="fine">${esc(versionText())}</p>
     </section></div>`;
 }
@@ -953,11 +990,17 @@ async function accountsHtml() {
       <label for="us-team">Team</label>${addableSelect("us-team", "team", picked.teamId, "No team")}
       <label class="check"><input id="us-active" type="checkbox" ${picked.state === "Active" || picked.state === "Pending" ? "checked" : ""}> Approve / active</label>
       <div class="row"><button class="btn" type="submit">Save</button>
-        ${picked.state === "Pending" ? `<button class="btn danger" type="button" data-action="reject-user" data-id="${esc(picked.empId)}">Reject request</button>` : ""}</div>
+        ${picked.state === "Pending" ? `<button class="btn danger" type="button" data-action="reject-user" data-id="${esc(picked.empId)}">Reject request</button>` : ""}
+        ${picked.empId !== state.me.empId ? `<button class="btn secondary" type="button" data-action="new-first-password" data-id="${esc(picked.empId)}">Give a new first password</button>` : ""}</div>
     </form>` : `<div class="box"><p class="sub">Select an account to approve it, change the role or team, or turn it off.</p></div>`;
   const waiting = users.filter((u) => u.state === "Pending").length;
+  const withAccount = new Set(users.flatMap((u) => [u.empId, u.email]));
+  const noAccount = directory.filter((d) => !withAccount.has(d.empId) && !withAccount.has(d.email)).length;
   return `
     <h2>Accounts</h2>
+    ${noAccount ? `<div class="box ok-box"><span>${noAccount} people on the lab directory have no account yet.</span>
+      <button class="btn small" type="button" data-action="create-all-users">Create accounts with first passwords</button>
+      <span class="fine">Downloads a file with each person's first password. Give each person only their own row; they choose their own password at the first sign-in.</span></div>` : ""}
     ${waiting ? `<div class="box ok-box"><span>${waiting} access request(s) waiting.</span>
       <button class="btn small" type="button" data-action="approve-all-users">Approve all waiting as User</button></div>` : ""}
     <div class="duo wide-left">
@@ -1158,8 +1201,14 @@ async function startApp() {
   state.view = "app";
   state.tab = "dashboard";
   state.filters = { owner: "", status: "", type: "", team: "", search: "" };
-  state.flash = { text: "Welcome, " + state.me.name + ".", kind: "good" };
   state.updatesSince = "";
+  if (state.me.mustChange) {
+    state.view = "first-password";
+    state.flash = null;
+    await paint();
+    return;
+  }
+  state.flash = { text: "Welcome, " + state.me.name + ".", kind: "good" };
   await paint();
   checkUpdates();
   showWaitingHandovers();
@@ -1388,6 +1437,10 @@ const submitHandlers = {
     state.flash = { text: result.message, kind: "good" };
     await paint();
   },
+  async "first-password-form"() {
+    await api("POST", "/api/me/password", { current: val("fp-current"), next: val("fp-next"), confirm: val("fp-confirm") });
+    await startApp();
+  },
   async "password-form"() {
     const result = await api("POST", "/api/me/password", { current: val("pw-current"), next: val("pw-next"), confirm: val("pw-confirm") });
     state.flash = { text: result.message, kind: "good" };
@@ -1498,6 +1551,24 @@ const clickHandlers = {
   "clear-found"() { state.foundCodes = null; return paint(); },
   "pick-user"(el) { state.selectedUser = el.dataset.id; return paint(); },
   "pick-team"(el) { state.selectedTeam = el.dataset.id ? Number(el.dataset.id) : null; return paint(); },
+  async "create-all-users"() {
+    if (!window.confirm("Create a User account with a first password for everyone on the lab directory who has none? "
+      + "A file with the passwords downloads once; keep it private.")) return;
+    const result = await api("POST", "/api/users/create-all");
+    if (result.accounts.length) {
+      downloadCsv("IMS_first_passwords.csv", [["Name", "Team", "Emp ID", "Mail ID", "First password"],
+        ...result.accounts.map((a) => [a.name, a.team, a.empId, a.email, a.password])]);
+    }
+    state.flash = { text: result.message, kind: "good" };
+    await paint();
+  },
+  async "new-first-password"(el) {
+    if (!window.confirm("Give this person a new first password? Their current password stops working.")) return;
+    const result = await api("POST", "/api/users/" + encodeURIComponent(el.dataset.id) + "/new-password");
+    window.prompt("New first password. Copy it and give it only to this person:", result.password);
+    state.flash = { text: result.message, kind: "good" };
+    await paint();
+  },
   async "approve-all-users"() {
     if (!window.confirm("Approve every waiting request as User? Give Admin or Lead roles afterwards, one by one.")) return;
     const result = await api("POST", "/api/users/approve-all");
@@ -1798,7 +1869,7 @@ document.addEventListener("input", (event) => {
   }
   try {
     state.me = await api("GET", "/api/me");
-    state.view = "app";
+    state.view = state.me.mustChange ? "first-password" : "app";
   } catch {
     state.view = "login";
   }

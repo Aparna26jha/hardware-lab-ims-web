@@ -193,7 +193,12 @@ Repeat the steps with these differences:
 
 In production, the sample buttons and **Reset sample data** are switched off. Load the real people with **Accounts → Import many people**: open the team list in Excel, select the rows including the header row (Name, Team, Emp ID, Email Address), copy, and paste into the box. Teams that do not exist yet are created automatically. Without a header row, each line is read as `Emp ID, mail ID, full name, team`. Then, on **Teams**, choose each team's Lead Admin and its members.
 
-Each person then opens the IMS, selects **Request access**, enters their mail ID and chooses their own password. On **Accounts**, **Approve all waiting as User** approves everyone waiting at once; give the Admin and Super Admin roles afterwards by selecting those people one by one.
+There are two ways to give people accounts:
+
+- **First passwords (quickest for a test round):** on **Accounts**, select **Create accounts with first passwords**. Everyone on the directory without an account gets an active User account, and a file `IMS_first_passwords.csv` downloads with each person's mail ID and first password. Send each person only their own row (for example with an Outlook mail merge), never the whole file. At their first sign-in they must choose their own password. The passwords cannot be shown again; if someone loses theirs, select them on **Accounts** → **Give a new first password**.
+- **Request access:** each person opens the IMS, selects **Request access**, enters their mail ID and chooses their own password. On **Accounts**, **Approve all waiting as User** approves everyone waiting at once.
+
+Either way, give the Admin and Super Admin roles afterwards by selecting those people one by one on **Accounts**.
 
 ## Updating to a new version
 

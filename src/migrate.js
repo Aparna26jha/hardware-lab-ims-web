@@ -7,6 +7,7 @@ const path = require("node:path");
 const { DEFAULT_ASSET_TYPES, DEFAULT_ROOMS } = require("./rules");
 
 const COLUMNS = [
+  ["users", "must_change", "TINYINT(1) NOT NULL DEFAULT 0 AFTER access_hash"],
   ["assets", "bond_no", "VARCHAR(40) NULL AFTER po_number"],
   ["assets", "storage_room", "VARCHAR(40) NULL AFTER expiry_date"],
   ["feedback", "other_text", "VARCHAR(80) NULL AFTER kind"],

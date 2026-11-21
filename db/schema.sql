@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
   approval        ENUM('Pending','Approved','Rejected') NOT NULL DEFAULT 'Pending',
   active          TINYINT(1)   NOT NULL DEFAULT 0,
   access_hash     VARCHAR(200) NOT NULL,
+  must_change     TINYINT(1)   NOT NULL DEFAULT 0,
   created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_user_email (email),

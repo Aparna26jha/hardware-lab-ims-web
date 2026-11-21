@@ -63,7 +63,7 @@ test.before(async () => {
   await conn.query("SET FOREIGN_KEY_CHECKS = 0; " + TABLES.map((t) => "DROP TABLE IF EXISTS " + t + ";").join(" ") + " SET FOREIGN_KEY_CHECKS = 1;");
   await upgradeTables(conn);
   // Turn the tables back into the version 2.1 layout to check that an older database is upgraded in place.
-  await conn.query(`DROP TABLE handovers; DROP TABLE choices;
+  await conn.query(`DROP TABLE handovers; DROP TABLE choices; ALTER TABLE users DROP COLUMN must_change;
     ALTER TABLE assets DROP COLUMN bond_no, DROP COLUMN storage_room;
     ALTER TABLE directory RENAME COLUMN emp_id TO alias;
     ALTER TABLE feedback DROP COLUMN other_text, MODIFY kind ENUM('Issue','Improvement','Bug','Suggestion','Others') NOT NULL;
@@ -71,7 +71,7 @@ test.before(async () => {
     INSERT INTO feedback (kind, title, description, emp_id, emp_name, email, role) VALUES ('Bug', 'Old bug report title', 'Old description that is long enough', 'X', 'X', 'x@x', 'User');`);
   assert.deepEqual(await upgradeTables(conn), [
     "table handovers", "table choices", "directory.alias renamed to emp_id", "feedback.kind merged Issue and Bug",
-    "assets.bond_no", "assets.storage_room", "feedback.other_text", "hardware_requests.other_text",
+    "users.must_change", "assets.bond_no", "assets.storage_room", "feedback.other_text", "hardware_requests.other_text",
     "hardware_requests.quantity", "choices assetType", "choices room"
   ]);
   assert.deepEqual(await upgradeTables(conn), [], "running the upgrade again changes nothing");
@@ -552,6 +552,35 @@ test("Super Admin approves every waiting request as User in one step", async () 
   await as("EN2301");
   await session(mail("EN2200"), "Secret@12");
   assert.equal((await sa("POST", "/api/users/approve-all")).data.message, "No requests are waiting.");
+});
+
+test("accounts with first passwords: only choosing a new password works until it is changed", async () => {
+  const sa = await as("SA001");
+  await sa("POST", "/api/directory", { empId: "20990101", email: "first.one@company.com", name: "First One", teamId: "" });
+  await sa("POST", "/api/directory", { empId: "20990102", email: "first.two@company.com", name: "First Two", teamId: "" });
+  assert.equal((await (await as("AD010"))("POST", "/api/users/create-all")).status, 403);
+  const created = (await sa("POST", "/api/users/create-all")).data;
+  const one = created.accounts.find((a) => a.email === "first.one@company.com");
+  assert.ok(created.accounts.some((a) => a.email === "first.two@company.com"));
+  assert.ok(!created.accounts.some((a) => a.empId === "EN1042"), "people with an account are left alone");
+  assert.match(one.password, /^Lab-[A-Za-z2-9]{8}$/);
+  assert.equal((await sa("POST", "/api/users/create-all")).data.accounts.length, 0);
+
+  const person = await session("first.one@company.com", one.password);
+  assert.equal((await person("GET", "/api/me")).data.mustChange, true);
+  const blocked = await person("GET", "/api/assets");
+  assert.equal(blocked.status, 403);
+  assert.match(blocked.data.error, /Choose your own password first/);
+  assert.equal((await person("POST", "/api/me/password", { current: one.password, next: "Mine@2026", confirm: "Mine@2026" })).status, 200);
+  assert.equal((await person("GET", "/api/me")).data.mustChange, false);
+  assert.equal((await person("GET", "/api/assets")).status, 200);
+
+  const reset = (await sa("POST", "/api/users/20990101/new-password")).data;
+  assert.match(reset.password, /^Lab-/);
+  assert.equal((await person("GET", "/api/me")).status, 401, "the old sign-in ends");
+  const again = await session("first.one@company.com", reset.password);
+  assert.equal((await again("GET", "/api/me")).data.mustChange, true);
+  assert.match((await sa("POST", "/api/users/SA001/new-password")).data.error, /My account/);
 });
 
 test("too many wrong passwords lock the sign-in for a while", async () => {

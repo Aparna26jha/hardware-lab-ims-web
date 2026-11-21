@@ -77,7 +77,8 @@ router.get("/me", requireUser, async (req, res) => {
     role: req.user.role,
     teamName: req.user.team_name || "",
     lead: lead ? personText(lead.emp_name, lead.email) : "",
-    ledTeams: ledTeams.map((t) => t.team_name)
+    ledTeams: ledTeams.map((t) => t.team_name),
+    mustChange: !!req.user.must_change
   });
 });
 
@@ -110,7 +111,7 @@ router.post("/me/password", requireUser, async (req, res) => {
   if (next === current) fail("Choose a new password that is different from the current one.");
   const row = await db.one("SELECT access_hash FROM users WHERE emp_id = ?", [req.user.emp_id]);
   if (!row || !auth.codeMatches(current, row.access_hash)) fail("The current password is not correct.");
-  await db.query("UPDATE users SET access_hash = ? WHERE emp_id = ?", [auth.hashCode(next), req.user.emp_id]);
+  await db.query("UPDATE users SET access_hash = ?, must_change = 0 WHERE emp_id = ?", [auth.hashCode(next), req.user.emp_id]);
   res.json({ message: "Your password was changed. Use the new password next time you sign in." });
 });
 
@@ -204,8 +205,8 @@ router.post("/users/make-lead", superAdmin, async (req, res) => {
   if (!password) fail(listed.emp_name + " has no account yet. Set a first password for them.");
   checkPassword(password);
   await db.query(
-    `INSERT INTO users (emp_id, emp_name, email, role, requested_role, team_id, approval, active, access_hash)
-     VALUES (?, ?, ?, 'Lead Admin', 'Lead Admin', ?, 'Approved', 1, ?)`,
+    `INSERT INTO users (emp_id, emp_name, email, role, requested_role, team_id, approval, active, access_hash, must_change)
+     VALUES (?, ?, ?, 'Lead Admin', 'Lead Admin', ?, 'Approved', 1, ?, 1)`,
     [empId, listed.emp_name, listed.email, listed.team_id, auth.hashCode(password)]
   );
   res.json({
@@ -256,6 +257,48 @@ router.put("/users/:id", superAdmin, async (req, res) => {
   });
   if (!active) await auth.endAllSessions(empId);
   res.json({ message: "Saved " + name + "." });
+});
+
+// Gives everyone on the directory without an account an active User account with its own first
+// password. The passwords are returned once, for the Super Admin to hand out; only hashes are kept.
+router.post("/users/create-all", superAdmin, async (req, res) => {
+  const people = await db.query(
+    `SELECT d.emp_id, d.emp_name, d.email, d.team_id, t.team_name FROM directory d
+       LEFT JOIN teams t ON t.team_id = d.team_id
+      WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.emp_id = d.emp_id OR u.email = d.email)
+      ORDER BY t.team_name, d.emp_name`);
+  const accounts = [];
+  await db.transaction(async (conn) => {
+    for (const p of people) {
+      const password = auth.firstPassword();
+      await conn.query(
+        `INSERT INTO users (emp_id, emp_name, email, role, requested_role, team_id, approval, active, access_hash, must_change)
+         VALUES (?, ?, ?, 'User', 'User', ?, 'Approved', 1, ?, 1)`,
+        [p.emp_id, p.emp_name, p.email, p.team_id, auth.hashCode(password)]);
+      accounts.push({ name: p.emp_name, team: p.team_name || "", empId: p.emp_id, email: p.email, password });
+    }
+  });
+  res.json({
+    message: accounts.length
+      ? "Created " + accounts.length + " account(s). Save the downloaded file now: the passwords cannot be shown again."
+      : "Everyone on the lab directory already has an account.",
+    accounts
+  });
+});
+
+router.post("/users/:id/new-password", superAdmin, async (req, res) => {
+  const empId = normalizeId(req.params.id);
+  if (empId === req.user.emp_id) fail("Change your own password in My account.");
+  const target = await db.one("SELECT emp_name, email FROM users WHERE emp_id = ?", [empId]);
+  if (!target) fail("Account not found.", 404);
+  const password = auth.firstPassword();
+  await db.query("UPDATE users SET access_hash = ?, must_change = 1 WHERE emp_id = ?", [auth.hashCode(password), empId]);
+  await auth.endAllSessions(empId);
+  res.json({
+    message: "New first password for " + target.emp_name + " (" + target.email + "): " + password
+      + ". Give it only to them; they choose their own password when they sign in.",
+    password
+  });
 });
 
 // Every waiting request becomes an active User; Admin and Lead roles are still given one by one.
