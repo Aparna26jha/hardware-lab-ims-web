@@ -25,9 +25,9 @@ CREATE TABLE IF NOT EXISTS users (
   CONSTRAINT fk_user_team FOREIGN KEY (team_id) REFERENCES teams (team_id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- People who are allowed to request access (the lab directory).
+-- People who are allowed to request access (the lab directory), keyed by employee ID.
 CREATE TABLE IF NOT EXISTS directory (
-  alias       VARCHAR(32)  NOT NULL PRIMARY KEY,
+  emp_id      VARCHAR(32)  NOT NULL PRIMARY KEY,
   email       VARCHAR(120) NOT NULL,
   emp_name    VARCHAR(120) NOT NULL,
   team_id     INT          NULL,
@@ -114,7 +114,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE TABLE IF NOT EXISTS feedback (
   feedback_id      INT AUTO_INCREMENT PRIMARY KEY,
-  kind             ENUM('Issue','Improvement','Bug','Suggestion','Others') NOT NULL,
+  kind             VARCHAR(30)  NOT NULL,
+  other_text       VARCHAR(80)  NULL,
   title            VARCHAR(150) NOT NULL,
   description      TEXT         NOT NULL,
   screen           VARCHAR(40)  NULL,
@@ -134,6 +135,8 @@ CREATE TABLE IF NOT EXISTS hardware_requests (
   kind           ENUM('Need','Return') NOT NULL,
   emp_id         VARCHAR(32)  NOT NULL,
   asset_type     VARCHAR(40)  NULL,
+  other_text     VARCHAR(80)  NULL,
+  quantity       TINYINT UNSIGNED NOT NULL DEFAULT 1,
   barcode        VARCHAR(64)  NULL,
   details        VARCHAR(500) NOT NULL DEFAULT '',
   status         ENUM('Open','Approved','Rejected','Cancelled') NOT NULL DEFAULT 'Open',
@@ -143,6 +146,36 @@ CREATE TABLE IF NOT EXISTS hardware_requests (
   created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY ix_request_status (status),
   KEY ix_request_emp (emp_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Giving an item to a person waits until that person accepts it.
+CREATE TABLE IF NOT EXISTS handovers (
+  handover_id   INT AUTO_INCREMENT PRIMARY KEY,
+  barcode       VARCHAR(64)  NOT NULL,
+  from_emp_id   VARCHAR(32)  NULL,
+  from_status   VARCHAR(40)  NOT NULL,
+  to_emp_id     VARCHAR(32)  NOT NULL,
+  to_status     VARCHAR(40)  NOT NULL,
+  remarks       VARCHAR(500) NULL,
+  request_id    INT          NULL,
+  state         ENUM('Waiting','Accepted','Declined','Cancelled') NOT NULL DEFAULT 'Waiting',
+  given_by      VARCHAR(32)  NOT NULL,
+  created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  decided_by    VARCHAR(32)  NULL,
+  decided_at    DATETIME     NULL,
+  decision_note VARCHAR(300) NULL,
+  KEY ix_handover_barcode (barcode, state),
+  KEY ix_handover_to (to_emp_id, state)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Values people can pick in dropdowns that Admins may extend (asset types, storage rooms).
+CREATE TABLE IF NOT EXISTS choices (
+  choice_id   INT AUTO_INCREMENT PRIMARY KEY,
+  list_name   VARCHAR(20)  NOT NULL,
+  value       VARCHAR(40)  NOT NULL,
+  added_by    VARCHAR(32)  NULL,
+  added_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_choice (list_name, value)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS sessions (

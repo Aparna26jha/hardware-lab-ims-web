@@ -3,15 +3,18 @@
 const ROLES = ["Super Admin", "Admin", "Lead Admin", "User"];
 const OWNERS = ["AMD-Specific", "Wipro-Specific"];
 const STATUSES = ["Available in Lab", "Assigned to Engineer", "Under Maintenance", "Scrapped/Returned"];
-const ASSET_TYPES = ["Motherboard", "Add-in Card", "Debugger", "SoC Board", "Power Supply", "Cable", "Storage Drive",
-  "Peripheral", "Other"];
+// First values of the asset type and storage room lists. Admins can add more from any dropdown.
+const DEFAULT_ASSET_TYPES = ["Motherboard", "Add-in Card", "Debugger", "SoC Board", "Power Supply", "Cable",
+  "Storage Drive", "Peripheral", "Other"];
 // Where items are kept while nobody holds them. Assigned items are with their user in the lab.
-const ROOMS = ["2A Inventory Room", "Store Room"];
-const NO_DOCUMENT_REASON_MIN = 10;
-const FEEDBACK_KINDS = ["Issue", "Improvement", "Bug", "Suggestion", "Others"];
+const DEFAULT_ROOMS = ["2A Inventory Room", "Store Room"];
+const FEEDBACK_KINDS = ["Issue / Bug", "Improvement", "Suggestion", "Other"];
 const FEEDBACK_STATUSES = ["New", "In review", "Done"];
 const FEEDBACK_TITLE_MIN = 15;
 const FEEDBACK_DESCRIPTION_MIN = 25;
+const OTHER_MIN = 3;
+const PASSWORD_MIN = 8;
+const PASSWORD_MAX = 64;
 
 const PREFIX_TYPES = {
   MB: "Motherboard",
@@ -53,8 +56,23 @@ function isAmdLabel(code) {
   return /^EMBLAB\d+$/.test(code);
 }
 
-function validAlias(alias) {
-  return /^[A-Z0-9-]{2,32}$/.test(alias);
+function validEmpId(empId) {
+  return /^[A-Z0-9-]{2,32}$/.test(empId);
+}
+
+// "Name S <name.s@company.com>" and "Name.Surname@Company.com" both give the plain mail ID.
+function cleanEmail(value) {
+  const textValue = String(value ?? "").trim();
+  const bracketed = /<([^<>\s]+@[^<>\s]+)>/.exec(textValue);
+  return (bracketed ? bracketed[1] : textValue).toLowerCase().slice(0, 120);
+}
+
+// EMBLAB30890 -> EMBLAB30891, MB-SP5-009 -> MB-SP5-010. Empty when the code does not end in a number.
+function nextBarcode(code) {
+  const match = /^(.*?)(\d+)$/.exec(code);
+  if (!match) return "";
+  const number = String(Number(match[2]) + 1).padStart(match[2].length, "0");
+  return match[1] + number;
 }
 
 function validBarcode(code) {
@@ -119,21 +137,29 @@ function isCustodian(user) {
   return !!user && (user.role === "Admin" || user.role === "Super Admin");
 }
 
-function checkAccessCode(code, confirm) {
-  if (code.length < 4 || code.length > 32) fail("The access code must be 4 to 32 characters.");
-  if (confirm !== undefined && code !== confirm) fail("The access code and the confirmation do not match.");
+function checkPassword(password, confirm) {
+  if (password.length < PASSWORD_MIN || password.length > PASSWORD_MAX) {
+    fail("The password must be " + PASSWORD_MIN + " to " + PASSWORD_MAX + " characters.");
+  }
+  if (confirm !== undefined && password !== confirm) fail("The password and the confirmation do not match.");
 }
 
-function checkFeedback({ kind, title, description }) {
+function checkOther(choice, otherText, what) {
+  if (choice === "Other" && otherText.length < OTHER_MIN) fail("You chose Other: say what " + what + " (at least " + OTHER_MIN + " characters).");
+}
+
+function checkFeedback({ kind, otherText, title, description }) {
   if (!FEEDBACK_KINDS.includes(kind)) fail("Choose a feedback type.");
+  checkOther(kind, otherText, "kind of feedback it is");
   if (title.length < FEEDBACK_TITLE_MIN) fail("The title must be at least " + FEEDBACK_TITLE_MIN + " characters.");
   if (description.length < FEEDBACK_DESCRIPTION_MIN) {
     fail("The description must be at least " + FEEDBACK_DESCRIPTION_MIN + " characters.");
   }
 }
 
-// Reads one CSV line, allowing "quoted, values".
+// Reads one pasted line: tab-separated when copied from Excel, otherwise CSV with "quoted, values".
 function csvCells(line) {
+  if (line.includes("\t")) return line.split("\t").map((cell) => cell.trim());
   const cells = [];
   let cell = "";
   let quoted = false;
@@ -160,9 +186,9 @@ function csvText(rows) {
 }
 
 module.exports = {
-  ROLES, OWNERS, STATUSES, ASSET_TYPES, ROOMS, FEEDBACK_KINDS, FEEDBACK_STATUSES,
-  FEEDBACK_TITLE_MIN, FEEDBACK_DESCRIPTION_MIN, NO_DOCUMENT_REASON_MIN,
-  AppError, fail, clean, normalizeId, normalizeBarcode, isAmdLabel, validAlias, validBarcode, isMailId,
-  isIsoDate, isoDay, addMonths, expiryState, typeFromPrefix, familyPrefix, statusMoveAllowed,
-  isCustodian, checkAccessCode, checkFeedback, csvCells, csvText
+  ROLES, OWNERS, STATUSES, DEFAULT_ASSET_TYPES, DEFAULT_ROOMS, FEEDBACK_KINDS, FEEDBACK_STATUSES,
+  FEEDBACK_TITLE_MIN, FEEDBACK_DESCRIPTION_MIN, OTHER_MIN, PASSWORD_MIN,
+  AppError, fail, clean, normalizeId, normalizeBarcode, isAmdLabel, validEmpId, validBarcode, isMailId, cleanEmail,
+  nextBarcode, isIsoDate, isoDay, addMonths, expiryState, typeFromPrefix, familyPrefix, statusMoveAllowed,
+  isCustodian, checkPassword, checkOther, checkFeedback, csvCells, csvText
 };

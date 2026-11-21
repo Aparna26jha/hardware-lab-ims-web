@@ -41,6 +41,7 @@ function createApp() {
   app.use("/api", require("./routes/assets").router);
   app.use("/api", require("./routes/consignments").router);
   app.use("/api", require("./routes/requests").router);
+  app.use("/api", require("./routes/handovers").router);
   app.use("/api", require("./routes/admin").router);
   app.use("/api", (req, res) => res.status(404).json({ error: "Not found." }));
 
@@ -58,8 +59,8 @@ function createApp() {
 
 async function start() {
   await db.query("SELECT 1");
-  const added = await upgradeTables(db.pool);
-  if (added.length) log("Added new columns: " + added.join(", ") + ".");
+  const changes = await upgradeTables(db.pool);
+  if (changes.length) log("Database brought up to date: " + changes.join(", ") + ".");
   await db.query("DELETE FROM sessions WHERE expires_at < NOW()");
   const app = createApp();
   app.listen(config.port, config.host, () => {

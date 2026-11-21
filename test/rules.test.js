@@ -34,15 +34,32 @@ test("status moves", () => {
   assert.equal(rules.statusMoveAllowed("Available in Lab", "Assigned to Engineer", "Admin"), true);
 });
 
-test("feedback needs a 15-character title and a 25-character description", () => {
-  const good = { kind: "Bug", title: "Search box is slow", description: "Typing a barcode takes several seconds." };
+test("feedback needs a 15-character title, a 25-character description, and words for Other", () => {
+  const good = { kind: "Issue / Bug", otherText: "", title: "Search box is slow", description: "Typing a barcode takes several seconds." };
   assert.doesNotThrow(() => rules.checkFeedback(good));
   assert.throws(() => rules.checkFeedback({ ...good, title: "Too short" }), /at least 15/);
   assert.throws(() => rules.checkFeedback({ ...good, description: "Short text" }), /at least 25/);
-  assert.throws(() => rules.checkFeedback({ ...good, kind: "Praise" }), /type/);
+  assert.throws(() => rules.checkFeedback({ ...good, kind: "Bug" }), /type/);
+  assert.throws(() => rules.checkFeedback({ ...good, kind: "Other" }), /You chose Other/);
+  assert.doesNotThrow(() => rules.checkFeedback({ ...good, kind: "Other", otherText: "Training" }));
+});
+
+test("mail IDs, passwords and the next barcode number", () => {
+  assert.equal(rules.cleanEmail("Sample P s <Sample.PS@Company.com>"), "sample.ps@company.com");
+  assert.equal(rules.cleanEmail(" Name.Surname@Company.com "), "name.surname@company.com");
+  assert.throws(() => rules.checkPassword("1234"), /8 to 64/);
+  assert.throws(() => rules.checkPassword("Lab@12345", "Lab@12346"), /do not match/);
+  assert.doesNotThrow(() => rules.checkPassword("Lab@12345", "Lab@12345"));
+  assert.equal(rules.nextBarcode("EMBLAB30890"), "EMBLAB30891");
+  assert.equal(rules.nextBarcode("MB-SP5-009"), "MB-SP5-010");
+  assert.equal(rules.nextBarcode("EMBLAB99"), "EMBLAB100");
+  assert.equal(rules.nextBarcode("CABLE-A"), "");
+  assert.ok(rules.validEmpId("20990001"));
+  assert.ok(!rules.validEmpId("a b"));
 });
 
 test("CSV reading and writing", () => {
   assert.deepEqual(rules.csvCells('EN1, a@b.com, "Name, Jr", IPSi'), ["EN1", "a@b.com", "Name, Jr", "IPSi"]);
+  assert.deepEqual(rules.csvCells("1\tName, Jr\tQA-APU\t2099\tx@y.com"), ["1", "Name, Jr", "QA-APU", "2099", "x@y.com"]);
   assert.match(rules.csvText([["=SUM(1)"]]), /"'=SUM\(1\)"/);
 });

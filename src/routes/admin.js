@@ -7,16 +7,21 @@ const { requireUser, requireRole } = require("../auth");
 const { backupNow, latestBackup } = require("../backup");
 const { saveUpload, sendUpload } = require("../files");
 const { loadSample } = require("../sample");
+const { choiceLists, addChoice } = require("../choices");
 const {
-  ROLES, OWNERS, STATUSES, ASSET_TYPES, ROOMS, FEEDBACK_KINDS, FEEDBACK_STATUSES, FEEDBACK_TITLE_MIN,
-  FEEDBACK_DESCRIPTION_MIN, NO_DOCUMENT_REASON_MIN, fail, clean, isCustodian, checkFeedback
+  ROLES, OWNERS, STATUSES, FEEDBACK_KINDS, FEEDBACK_STATUSES, FEEDBACK_TITLE_MIN, FEEDBACK_DESCRIPTION_MIN,
+  OTHER_MIN, PASSWORD_MIN, fail, clean, isCustodian, checkFeedback
 } = require("../rules");
 const { scopedAssets, recentActivity } = require("./assets");
 const { openRequests } = require("./requests");
+const { waitingFor, allWaiting } = require("./handovers");
+const { personText } = require("./people");
 
 const router = express.Router();
+const custodian = requireRole("Super Admin", "Admin");
 
-router.get("/settings", (req, res) => {
+router.get("/settings", async (req, res) => {
+  const lists = await choiceLists();
   res.json({
     version: config.version,
     environment: config.appEnv,
@@ -24,10 +29,17 @@ router.get("/settings", (req, res) => {
     expiryWarnMonths: config.expiryWarnMonths,
     feedbackTitleMin: FEEDBACK_TITLE_MIN,
     feedbackDescriptionMin: FEEDBACK_DESCRIPTION_MIN,
-    noDocumentReasonMin: NO_DOCUMENT_REASON_MIN,
-    roles: ROLES, owners: OWNERS, statuses: STATUSES, assetTypes: ASSET_TYPES, rooms: ROOMS,
+    otherMin: OTHER_MIN,
+    passwordMin: PASSWORD_MIN,
+    roles: ROLES, owners: OWNERS, statuses: STATUSES, assetTypes: lists.assetTypes, rooms: lists.rooms,
     feedbackKinds: FEEDBACK_KINDS, feedbackStatuses: FEEDBACK_STATUSES
   });
+});
+
+// Adds a new asset type or storage room from the "+ Add new" choice in a dropdown.
+router.post("/choices", custodian, async (req, res) => {
+  const value = await addChoice(clean(req.body.list), req.body.value, req.user.emp_id);
+  res.json({ message: "Added " + value + ".", value, ...(await choiceLists()) });
 });
 
 function countAssets(assets) {
@@ -45,7 +57,7 @@ function countAssets(assets) {
 
 async function teamSummary() {
   const teams = await db.query(
-    `SELECT t.team_id, t.team_name, t.lead_emp_id, l.emp_name AS lead_name,
+    `SELECT t.team_id, t.team_name, l.emp_name AS lead_name, l.email AS lead_email,
             COUNT(a.barcode) AS held,
             COALESCE(SUM(a.ownership = 'AMD-Specific'), 0) AS amd,
             COALESCE(SUM(a.ownership = 'Wipro-Specific'), 0) AS wipro,
@@ -54,10 +66,10 @@ async function teamSummary() {
        LEFT JOIN users l ON l.emp_id = t.lead_emp_id
        LEFT JOIN users m ON m.team_id = t.team_id
        LEFT JOIN assets a ON a.holder_emp_id = m.emp_id AND a.deleted_at IS NULL
-      GROUP BY t.team_id, t.team_name, t.lead_emp_id, l.emp_name
+      GROUP BY t.team_id, t.team_name, l.emp_name, l.email
       ORDER BY t.team_name`);
   const rows = teams.map((t) => ({
-    teamId: t.team_id, team: t.team_name, lead: t.lead_emp_id ? t.lead_emp_id + " " + (t.lead_name || "") : "Not set",
+    teamId: t.team_id, team: t.team_name, lead: personText(t.lead_name, t.lead_email) || "Not set",
     held: Number(t.held), amd: Number(t.amd), wipro: Number(t.wipro), maintenance: Number(t.maintenance)
   }));
   const loose = await db.one(
@@ -84,27 +96,37 @@ router.get("/dashboard", requireUser, async (req, res) => {
   const user = req.user;
   const assets = await scopedAssets(user);
   const attention = [];
+  if (isCustodian(user)) {
+    const consignments = await db.query(
+      `SELECT c.consignment_id, c.invoice_no, c.po_number, c.expected_items,
+              (SELECT COUNT(*) FROM assets a WHERE a.consignment_id = c.consignment_id) AS scanned,
+              (SELECT COUNT(*) FROM consignment_documents d WHERE d.consignment_id = c.consignment_id) AS docs
+         FROM consignments c ORDER BY c.received_date`);
+    consignments.filter((c) => !Number(c.docs)).forEach((c) => attention.push({
+      tag: "No document", kind: "bad", go: "inward", id: c.consignment_id,
+      text: "Invoice " + c.invoice_no + " / " + c.po_number + ": no document uploaded yet (" + c.scanned + " of "
+        + c.expected_items + " items scanned)"
+    }));
+    consignments.filter((c) => Number(c.docs) && Number(c.scanned) < c.expected_items).forEach((c) => attention.push({
+      tag: "Inward", kind: "warn", go: "inward", id: c.consignment_id,
+      text: "Invoice " + c.invoice_no + ": " + c.scanned + " of " + c.expected_items + " items scanned"
+    }));
+  }
   if (user.role === "Super Admin") {
-    const pending = await db.query("SELECT emp_id, emp_name FROM users WHERE approval = 'Pending' ORDER BY created_at");
-    pending.forEach((p) => attention.push({ tag: "Waiting", kind: "warn", text: p.emp_id + " " + p.emp_name + " asked for access", go: "accounts" }));
+    const pending = await db.query("SELECT emp_name, email FROM users WHERE approval = 'Pending' ORDER BY created_at");
+    pending.forEach((p) => attention.push({ tag: "Waiting", kind: "warn", text: personText(p.emp_name, p.email) + " asked for access", go: "accounts" }));
   }
   const requests = await openRequests();
   requests.filter((r) => isCustodian(user) || r.empId === user.emp_id).forEach((r) => attention.push({
     tag: "Request", kind: "warn", go: "requests",
-    text: (isCustodian(user) ? r.empId + " " + r.empName + ": " : "Your request: ")
+    text: (isCustodian(user) ? r.empName + ": " : "Your request: ")
       + (r.kind === "Return" ? "return " + r.barcode : "needs " + (r.assetType || "hardware") + " - " + r.details)
       + (isCustodian(user) ? "" : " (waiting for an Admin)")
   }));
   if (isCustodian(user)) {
-    const open = await db.query(
-      `SELECT c.consignment_id, c.invoice_no, c.expected_items,
-              (SELECT COUNT(*) FROM assets a WHERE a.consignment_id = c.consignment_id) AS scanned,
-              (SELECT COUNT(*) FROM consignment_documents d WHERE d.consignment_id = c.consignment_id) AS docs
-         FROM consignments c ORDER BY c.received_date`);
-    open.filter((c) => Number(c.scanned) < c.expected_items || !Number(c.docs)).forEach((c) => attention.push({
-      tag: "Inward", kind: "warn", go: "inward", id: c.consignment_id,
-      text: "Invoice " + c.invoice_no + ": " + c.scanned + " of " + c.expected_items + " items scanned"
-        + (Number(c.docs) ? "" : ", documents missing")
+    (await allWaiting()).forEach((h) => attention.push({
+      tag: "Accept?", kind: "warn", barcode: h.barcode,
+      text: "Waiting for " + h.toName + " to accept " + h.barcode + " (" + h.item + ")"
     }));
     const fresh = await db.one("SELECT COUNT(*) AS n FROM feedback WHERE status = 'New'");
     if (Number(fresh.n)) attention.push({ tag: "Feedback", kind: "warn", go: "feedback", text: fresh.n + " new feedback item(s)" });
@@ -112,15 +134,78 @@ router.get("/dashboard", requireUser, async (req, res) => {
   assets.filter((a) => a.expiry).sort((a, b) => a.expiryDate.localeCompare(b.expiryDate)).forEach((a) => attention.push({
     tag: a.expiry === "expired" ? "Expired" : "Expiring", kind: a.expiry === "expired" ? "bad" : "warn", barcode: a.barcode,
     text: a.barcode + " " + (a.expiry === "expired" ? "expired " : "expires ") + a.expiryDate + " · " + (a.model || a.assetType)
-      + " · " + (a.holderId ? "held by " + a.holderId : "in the cage")
+      + " · " + (a.holderId ? "held by " + a.holderName : "in the cage")
   }));
   res.json({
     counts: countAssets(assets),
     attention,
+    handovers: await waitingFor(user.emp_id),
     activity: isCustodian(user) ? await recentActivity(12) : null,
     teams: isCustodian(user) ? await teamSummary() : null,
     lastBackup: user.role === "Super Admin" ? (latestBackup() || {}).time || null : null
   });
+});
+
+// What changed since the last check, for the pop-up notifications. `since` is the server time
+// returned by the previous call; the browser skips items it has already shown.
+router.get("/updates", requireUser, async (req, res) => {
+  const now = (await db.one("SELECT NOW() AS now")).now;
+  const since = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(req.query.since || "")) ? req.query.since : null;
+  if (!since) return res.json({ now, items: [] });
+  const me = req.user;
+  const items = [];
+  const add = (key, kind, title, text, go, extra) => items.push({ key, kind, title, text, go: go || "", ...extra });
+  for (const h of await db.query(
+    `SELECT h.handover_id, h.barcode, h.request_id, g.emp_name AS given_name, a.asset_type, a.model FROM handovers h
+       JOIN assets a ON a.barcode = h.barcode LEFT JOIN users g ON g.emp_id = h.given_by
+      WHERE h.state = 'Waiting' AND h.to_emp_id = ? AND h.created_at >= ?`, [me.emp_id, since])) {
+    add("ho-new-" + h.handover_id, "info", h.request_id ? "Your request was approved" : "Item waiting for you",
+      (h.given_name || "An Admin") + " is giving you " + h.barcode + " (" + [h.asset_type, h.model].filter(Boolean).join(" · ")
+        + "). Accept it when you have it in hand.", "dashboard", { handoverId: h.handover_id, barcode: h.barcode });
+  }
+  for (const h of await db.query(
+    `SELECT h.handover_id, h.barcode, h.state, h.decision_note, r.emp_name AS to_name FROM handovers h
+       LEFT JOIN users r ON r.emp_id = h.to_emp_id
+      WHERE h.given_by = ? AND h.state IN ('Accepted', 'Declined') AND h.decided_at >= ?`, [me.emp_id, since])) {
+    add("ho-done-" + h.handover_id, h.state === "Accepted" ? "good" : "bad", "Handover " + h.state.toLowerCase(),
+      h.to_name + " " + h.state.toLowerCase() + " " + h.barcode + (h.decision_note ? ": " + h.decision_note : "") + ".");
+  }
+  const custodian = isCustodian(me);
+  const logs = await db.query(
+    `SELECT l.log_id, l.barcode, l.action, l.to_holder, l.from_holder, l.to_status, b.emp_name AS by_name, n.emp_name AS to_name
+       FROM audit_log l LEFT JOIN users b ON b.emp_id = l.done_by LEFT JOIN users n ON n.emp_id = l.to_holder
+      WHERE l.logged_at >= ? AND l.done_by <> ?` + (custodian ? "" : " AND (l.to_holder = ? OR l.from_holder = ?)")
+      + " ORDER BY l.log_id LIMIT 30",
+    custodian ? [since, me.emp_id] : [since, me.emp_id, me.emp_id, me.emp_id]);
+  const done = { Inward: "added to the lab", Edit: "edited", Delete: "deleted", Restore: "restored" };
+  for (const l of logs) {
+    const what = l.action === "Transfer" ? (l.to_name ? "now with " + l.to_name : "now " + l.to_status) : done[l.action];
+    add("log-" + l.log_id, "info", l.action === "Inward" ? "New item" : "Item updated",
+      l.barcode + " " + what + " by " + (l.by_name || "someone") + ".");
+  }
+  if (custodian) {
+    for (const r of await db.query(
+      `SELECT r.request_id, r.kind, u.emp_name FROM hardware_requests r LEFT JOIN users u ON u.emp_id = r.emp_id
+        WHERE r.created_at >= ? AND r.emp_id <> ?`, [since, me.emp_id])) {
+      add("rq-" + r.request_id, "info", "New request", r.emp_name + (r.kind === "Return" ? " wants to return an item." : " needs hardware."), "requests");
+    }
+    for (const f of await db.query("SELECT feedback_id, title, emp_name FROM feedback WHERE created_at >= ? AND emp_id <> ?", [since, me.emp_id])) {
+      add("fb-" + f.feedback_id, "info", "New feedback", f.emp_name + ": " + f.title, "feedback");
+    }
+  }
+  for (const r of await db.query(
+    `SELECT request_id, status FROM hardware_requests WHERE emp_id = ? AND decided_at >= ? AND decided_by <> ?
+        AND NOT (kind = 'Need' AND status = 'Approved')`,
+    [me.emp_id, since, me.emp_id])) {
+    add("rq-done-" + r.request_id + "-" + r.status, r.status === "Rejected" ? "bad" : "good", "Your request",
+      "Request #" + r.request_id + " was " + r.status.toLowerCase() + ".", "requests");
+  }
+  if (me.role === "Super Admin") {
+    for (const u of await db.query("SELECT emp_id, emp_name FROM users WHERE approval = 'Pending' AND created_at >= ?", [since])) {
+      add("user-" + u.emp_id, "info", "Access request", u.emp_name + " asked for access.", "accounts");
+    }
+  }
+  res.json({ now, items });
 });
 
 // ---- Feedback ----
@@ -128,30 +213,32 @@ router.get("/dashboard", requireUser, async (req, res) => {
 router.post("/feedback", requireUser, async (req, res) => {
   const entry = {
     kind: clean(req.body.kind),
+    otherText: clean(req.body.otherText, 80),
     title: clean(req.body.title, 150),
     description: clean(req.body.description, 4000)
   };
   checkFeedback(entry);
   const shot = req.body.screenshot ? saveUpload(req.body.screenshot, "feedback", ["png", "jpg"], 5) : null;
   await db.query(
-    `INSERT INTO feedback (kind, title, description, screen, screenshot_name, screenshot_mime, emp_id, emp_name, email, role)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [entry.kind, entry.title, entry.description, clean(req.body.screen, 40) || null, shot ? shot.storedName : null,
-      shot ? shot.mime : null, req.user.emp_id, req.user.emp_name, req.user.email, req.user.role]
+    `INSERT INTO feedback (kind, other_text, title, description, screen, screenshot_name, screenshot_mime, emp_id, emp_name, email, role)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [entry.kind, entry.kind === "Other" ? entry.otherText : null, entry.title, entry.description,
+      clean(req.body.screen, 40) || null, shot ? shot.storedName : null, shot ? shot.mime : null,
+      req.user.emp_id, req.user.emp_name, req.user.email, req.user.role]
   );
   res.json({ message: "Thank you. Your feedback was sent." });
 });
 
-router.get("/feedback", requireRole("Super Admin", "Admin"), async (req, res) => {
+router.get("/feedback", custodian, async (req, res) => {
   const rows = await db.query("SELECT * FROM feedback ORDER BY (status = 'Done'), created_at DESC");
   res.json(rows.map((f) => ({
-    id: f.feedback_id, kind: f.kind, title: f.title, description: f.description, screen: f.screen || "",
-    hasScreenshot: !!f.screenshot_name, person: f.emp_id + " " + f.emp_name, email: f.email, role: f.role,
-    status: f.status, createdAt: f.created_at
+    id: f.feedback_id, kind: f.kind === "Other" && f.other_text ? "Other: " + f.other_text : f.kind, title: f.title,
+    description: f.description, screen: f.screen || "", hasScreenshot: !!f.screenshot_name, person: f.emp_name,
+    email: f.email, role: f.role, status: f.status, createdAt: f.created_at
   })));
 });
 
-router.put("/feedback/:id", requireRole("Super Admin", "Admin"), async (req, res) => {
+router.put("/feedback/:id", custodian, async (req, res) => {
   const status = clean(req.body.status);
   if (!FEEDBACK_STATUSES.includes(status)) fail("Choose a status.");
   const result = await db.query("UPDATE feedback SET status = ? WHERE feedback_id = ?", [status, Number(req.params.id) || 0]);
@@ -159,7 +246,7 @@ router.put("/feedback/:id", requireRole("Super Admin", "Admin"), async (req, res
   res.json({ message: "Feedback marked " + status + "." });
 });
 
-router.get("/feedback/:id/screenshot", requireRole("Super Admin", "Admin"), async (req, res) => {
+router.get("/feedback/:id/screenshot", custodian, async (req, res) => {
   const row = await db.one("SELECT screenshot_name, screenshot_mime FROM feedback WHERE feedback_id = ?", [Number(req.params.id) || 0]);
   if (!row || !row.screenshot_name) fail("No screenshot.", 404);
   sendUpload(res, "feedback", row.screenshot_name, row.screenshot_mime, "feedback-" + req.params.id + "." + row.screenshot_name.split(".").pop());

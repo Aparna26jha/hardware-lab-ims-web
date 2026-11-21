@@ -44,16 +44,16 @@ const TEAMS = [
   { name: "Team B (sample)", lead: "LD300" }
 ];
 
-// [alias, name, role, code, team, approval]
+// [emp ID, name, role, password, team, approval]. Mail IDs are <emp id>@lab.example.
 const USERS = [
-  ["SA001", "Sample Super Admin", "Super Admin", "1001", null, "Approved"],
-  ["AD010", "Sample Inventory Custodian", "Admin", "2001", null, "Approved"],
-  ["LD200", "Sample Lead IPSi", "Lead Admin", "4001", "IPSi", "Approved"],
-  ["LD300", "Sample Lead Team B", "Lead Admin", "4002", "Team B (sample)", "Approved"],
-  ["EN1042", "Sample Validation Engineer", "User", "3001", "IPSi", "Approved"],
-  ["EN1108", "Sample Signal Engineer", "User", "3002", "IPSi", "Approved"],
-  ["EN1200", "Sample Platform Engineer", "User", "3004", "Team B (sample)", "Approved"],
-  ["EN2301", "Sample Requesting Engineer", "User", "3003", "IPSi", "Pending"]
+  ["SA001", "Sample Super Admin", "Super Admin", "Lab@1001", null, "Approved"],
+  ["AD010", "Sample Inventory Custodian", "Admin", "Lab@2001", null, "Approved"],
+  ["LD200", "Sample Lead IPSi", "Lead Admin", "Lab@4001", "IPSi", "Approved"],
+  ["LD300", "Sample Lead Team B", "Lead Admin", "Lab@4002", "Team B (sample)", "Approved"],
+  ["EN1042", "Sample Validation Engineer", "User", "Lab@3001", "IPSi", "Approved"],
+  ["EN1108", "Sample Signal Engineer", "User", "Lab@3002", "IPSi", "Approved"],
+  ["EN1200", "Sample Platform Engineer", "User", "Lab@3004", "Team B (sample)", "Approved"],
+  ["EN2301", "Sample Requesting Engineer", "User", "Lab@3003", "IPSi", "Pending"]
 ];
 
 const EXTRA_DIRECTORY = [["EN2200", "Sample New Engineer", "IPSi"]];
@@ -93,13 +93,18 @@ const LOG = [
   ["2026-10-20 09:30:00", "SOC-FPGA-006", "Transfer", "EN1108", "EN1200", "Assigned to Engineer", "Assigned to Engineer", "AD010", "Moved to Team B for FPGA characterization"]
 ];
 
-// [kind, alias, type, barcode, details]
+// [kind, emp ID, type, barcode, details]
 const REQUESTS = [
   ["Return", "EN1042", null, "PSU-2K4-021", "Bench work finished, please collect the supply"],
   ["Need", "EN1108", "Debugger", null, "Need a JTAG debugger for MI300 bring-up this week"]
 ];
 
-const TABLES = ["sessions", "hardware_requests", "feedback", "audit_log", "assets", "consignment_documents", "consignments", "directory", "users", "teams"];
+// [barcode, to, given by, remarks]: offered, waiting for the person to accept.
+const HANDOVERS = [["CBL-PCIE-110", "EN1200", "AD010", "Riser cable for the FPGA bench"]];
+
+// Added-by-Admin dropdown values are kept on reset; everything else returns to the sample lab.
+const TABLES = ["sessions", "handovers", "hardware_requests", "feedback", "audit_log", "assets", "consignment_documents",
+  "consignments", "directory", "users", "teams"];
 
 // Loads the sample lab. With reset=false it only fills an empty database.
 async function loadSample(reset) {
@@ -121,20 +126,20 @@ async function loadSample(reset) {
       const [result] = await conn.query("INSERT INTO teams (team_name) VALUES (?)", [team.name]);
       teamIds[team.name] = result.insertId;
     }
-    for (const [alias, name, role, code, team, approval] of USERS) {
-      const email = alias.toLowerCase() + "@lab.example";
+    for (const [empId, name, role, password, team, approval] of USERS) {
+      const email = empId.toLowerCase() + "@lab.example";
       const teamId = team ? teamIds[team] : null;
       await conn.query(
         `INSERT INTO users (emp_id, emp_name, email, role, requested_role, team_id, approval, active, access_hash)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [alias, name, email, role, role, teamId, approval, approval === "Approved" ? 1 : 0, hashCode(code)]
+        [empId, name, email, role, role, teamId, approval, approval === "Approved" ? 1 : 0, hashCode(password)]
       );
-      await conn.query("INSERT INTO directory (alias, email, emp_name, team_id, added_by) VALUES (?, ?, ?, ?, 'SA001')",
-        [alias, email, name, teamId]);
+      await conn.query("INSERT INTO directory (emp_id, email, emp_name, team_id, added_by) VALUES (?, ?, ?, ?, 'SA001')",
+        [empId, email, name, teamId]);
     }
-    for (const [alias, name, team] of EXTRA_DIRECTORY) {
-      await conn.query("INSERT INTO directory (alias, email, emp_name, team_id, added_by) VALUES (?, ?, ?, ?, 'SA001')",
-        [alias, alias.toLowerCase() + "@lab.example", name, teamIds[team]]);
+    for (const [empId, name, team] of EXTRA_DIRECTORY) {
+      await conn.query("INSERT INTO directory (emp_id, email, emp_name, team_id, added_by) VALUES (?, ?, ?, ?, 'SA001')",
+        [empId, empId.toLowerCase() + "@lab.example", name, teamIds[team]]);
     }
     for (const team of TEAMS) {
       await conn.query("UPDATE teams SET lead_emp_id = ? WHERE team_id = ?", [team.lead, teamIds[team.name]]);
@@ -178,9 +183,14 @@ async function loadSample(reset) {
         `INSERT INTO audit_log (logged_at, barcode, action, from_holder, to_holder, from_status, to_status, done_by, remarks)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, row);
     }
-    for (const [kind, alias, type, barcode, details] of REQUESTS) {
+    for (const [kind, empId, type, barcode, details] of REQUESTS) {
       await conn.query("INSERT INTO hardware_requests (kind, emp_id, asset_type, barcode, details) VALUES (?, ?, ?, ?, ?)",
-        [kind, alias, type, barcode, details]);
+        [kind, empId, type, barcode, details]);
+    }
+    for (const [barcode, to, by, remarks] of HANDOVERS) {
+      await conn.query(
+        `INSERT INTO handovers (barcode, from_status, to_emp_id, to_status, remarks, given_by)
+         VALUES (?, 'Available in Lab', ?, 'Assigned to Engineer', ?, ?)`, [barcode, to, remarks, by]);
     }
     await conn.commit();
     return true;

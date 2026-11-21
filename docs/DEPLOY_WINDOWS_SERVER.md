@@ -119,7 +119,7 @@ It prints `Tables are ready` and `Sample data loaded`.
 npm start
 ```
 
-It prints `Hardware Lab IMS v2.2.0 (development) is running on port 8080`. On the server, open Edge at `http://localhost:8080` and sign in as `SA001`, code `1001`.
+It prints `Hardware Lab IMS v3.0.0 (development) is running on port 8080`. On the server, open Edge at `http://localhost:8080` and sign in as `sa001@lab.example`, password `Lab@1001`.
 
 Press **Ctrl+C** in the Command Prompt to stop it again.
 
@@ -191,7 +191,7 @@ Repeat the steps with these differences:
 | Step 8 | `npm run init-db:sample` | `npm run init-db`, then `npm run create-admin` for the first Super Admin |
 | Task names | `(dev)` | `(prod)` |
 
-In production, the sample buttons and **Reset sample data** are switched off. Load the real people with **Accounts → Import many people**: one line per person, `alias, mail ID, full name, team`. Create the teams first on the **Teams** screen.
+In production, the sample buttons and **Reset sample data** are switched off. Load the real people with **Accounts → Import many people**: open the team list in Excel, select the rows including the header row (Name, Team, Emp ID, Email Address), copy, and paste into the box. Teams that do not exist yet are created automatically. Without a header row, each line is read as `Emp ID, mail ID, full name, team`. Then, on **Teams**, choose each team's Lead Admin and its members.
 
 ## Updating to a new version
 
@@ -205,7 +205,16 @@ Test a new version on the development copy first, then repeat these steps on pro
 
 On the development copy, select **Accounts → Reset sample data** after an update to see the newest sample lab. Items recorded before version 2.2 have no storage room yet; the first time an Admin edits one, the IMS asks for it.
 
-The version number (from `package.json`) shows at the bottom of every page, for example `Hardware Lab IMS v2.2.0 · development`. After an update, check it to confirm the new version is running, and ask testers to include it when they report a problem.
+### Updating from version 2.x to 3.0
+
+Version 3.0 signs in with the **mail ID and password** instead of alias and code. The update keeps every account and item:
+
+- When the app starts, it updates the database by itself and prints `Database brought up to date: ...` once.
+- Everyone signs in with their mail ID and their old code until they change it on **My account → Change password**. New passwords must be 8 to 64 characters.
+- If the Super Admin's mail ID was never recorded or the code is forgotten, run `npm run create-admin` again with the same Emp ID: it sets the mail ID and a new password.
+- Items handed to a person from now on wait for that person to press **Accept**.
+
+The version number (from `package.json`) shows at the bottom of every page, for example `Hardware Lab IMS v3.0.0 · development`. After an update, check it to confirm the new version is running, and ask testers to include it when they report a problem.
 
 ## Troubleshooting
 

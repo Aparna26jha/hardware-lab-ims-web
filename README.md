@@ -12,18 +12,21 @@ It runs as a service on one server. People open it in a browser using the server
 
 | Area | What you can do |
 |---|---|
-| Sign-in | Sign in with your alias ID or company mail ID and an access code. New people request access; a Super Admin approves them. |
-| Dashboard | Count cards (select one to list exactly those items), a "Needs your attention" list, recent activity, an assets-by-team table, a searchable hardware list with filters, and CSV export. |
-| Inward by consignment | Record the package first (invoice no., PO no., date, number of items, ownership). Upload the scanned invoice or delivery note. Then scan or type each item into it. PO and arrival date come from the consignment automatically. If the document has not arrived yet, tick **No document yet** and give the reason: it is saved in each item's history, and the consignment stays under "Needs your attention" until a document is uploaded. |
+| Sign-in | Sign in with your company mail ID and password (8 to 64 characters). New people request access; a Super Admin approves them. |
+| Pop-up notifications | A small pop-up in the top-right corner confirms every save and explains every error. Every 20 seconds the IMS also checks for news that concerns you (an item waiting for you, an answer to your request, a new request or feedback for Admins) and shows it the same way. |
+| Dashboard | Count cards (select one to list exactly those items), a "Needs your attention" list (red lines first), recent activity, an assets-by-team table, a searchable hardware list with filters, and CSV export. Every row has ✏️ (edit) and, for the Super Admin, 🗑️ (delete). |
+| Inward by consignment | Record the package first (invoice no., PO no., date, number of items, ownership). Upload the scanned invoice or delivery note. Then scan or type each item into it. PO and arrival date come from the consignment automatically. Until a document is uploaded, **No document yet** stays ticked and cannot be cleared, and the consignment shows in red. Admins can edit a consignment with ✏️ (ownership is locked once items are scanned in). |
+| Reading barcodes from a document | **Upload and read barcodes** reads every Code 39 barcode on a photo (JPG, PNG) or PDF in the browser, then offers to add all of them as items in one step with the details typed once. A list of barcodes can also be pasted (one per line). |
 | AMD asset labels | AMD labels carry a Code 39 barcode `EMBLAB` + number (for example `EMBLAB30890`), a Bond No. and a description line. The IMS accepts them with or without the `*` start and stop marks, records the Bond No., and refuses an `EMBLAB` label in a Wipro-Specific consignment. |
-| Barcode auto-fill | Scanning a new barcode fills the type, make, model, manufacturer, revision, description, Bond No. and storage place from the item scanned last into the same consignment (or, for barcodes like `MB-SP5-045`, from the latest item of the same family). Typing a known model fills its make and manufacturer. |
-| Storage places | Free items are kept in the **2A Inventory Room** or the **Store Room**, with an optional cupboard or shelf. Assigned items show as **Lab (with the person's alias)**. |
-| Transfer | Scan an item, choose the new status and the person receiving it. Its full history is shown beside it. |
+| Barcode numbers and auto-fill | The barcode box is filled with the next number automatically (`EMBLAB30890` is followed by `EMBLAB30891`); scanning replaces it. A new barcode fills the type, make, model, manufacturer, revision, description, Bond No. and storage place from the item scanned last into the same consignment (or, for barcodes like `MB-SP5-045`, from the latest item of the same family). On Transfer and Requests, choosing a barcode from the list shows all its details. |
+| Dropdowns | Asset type, storage room, team and Lead Admin lists start at **Choose** and warn if nothing is chosen. Each has **+ Add new** at the bottom to add a value on the spot. |
+| Storage places | Free items are kept in a storage room (**2A Inventory Room**, **Store Room**, or one added later), with an optional cupboard or shelf. Assigned items show as **Lab (with the person's name)**. |
+| Transfer | Choose an item, the new status and the mail ID of the person receiving it. The item moves only when that person presses **Accept** on their dashboard; if they decline, it stays where it was. Its full history is shown beside it. |
 | Asset details | See everything about one item; Admins edit details (every edit is logged). |
-| Requests | Engineers and leads ask for hardware ("I need a debugger for MI300 bring-up") or ask the custodian to take back an item they hold. Admins see open requests in "Needs your attention". Approving makes the transfer and logs it (for a hardware request, the Admin enters the barcode of a free item from the cage). Rejecting needs a reason. The person sees the answer on their Requests screen and can cancel an open request. |
-| Delete (Super Admin only) | A "soft delete": the item is hidden from every list and the deletion is logged with a reason. It can be restored from **Deleted assets**. |
-| Teams | Super Admin creates teams and sets each team's Lead Admin. Every item shows the team of the person holding it. |
-| Feedback | A **Give feedback** button on every screen. Type (Issue, Improvement, Bug, Suggestion, Others), title (at least 15 characters), description (at least 25 characters) and an optional screenshot. The name, mail ID, role and time are saved automatically. Admins and Super Admins see the list and mark items In review or Done. |
+| Requests | Engineers and leads ask for hardware (choosing a free item from the list, or a type and how many, or **Other** with a few words) or ask the custodian to take back an item they hold. Admins see open requests in "Needs your attention". When approving, the Admin sees the free items of the requested type and ticks as many as were asked for. Each item pops up for the person with **Accept** and **Reject**. Rejecting a request needs a reason. The person sees the answer on their Requests screen and can cancel an open request. |
+| Delete (Super Admin only) | A "soft delete": the item is hidden from every list and the deletion is logged with a reason. **Delete history** lists every deletion, who did it and why, and can restore the item. |
+| Teams | Super Admin creates teams, sets each team's Lead Admin (or makes a new Lead Admin from the same list), and chooses the people in each team. Every item shows the team of the person holding it. |
+| Feedback | A **Give feedback** button beside **Sign out**. Type (Issue / Bug, Improvement, Suggestion, Other with a few words), title (at least 15 characters), description (at least 25 characters) and an optional screenshot. The name, mail ID, role and time are saved automatically. Admins and Super Admins see the list and mark items In review or Done. |
 | Expiry | The expiry date is optional. Warnings start 6 months before it (`EXPIRY_WARN_MONTHS`). |
 | Backups | Automatic daily backup, plus **Back up now** for the Super Admin. See [Backups](#backups). |
 
@@ -34,7 +37,7 @@ It runs as a service on one server. People open it in a browser using the server
 | Super Admin | Everything | Everything, plus approve accounts, roles and teams, the lab directory, delete and restore, backup |
 | Admin | Everything | Inward, transfer, approve or reject requests, edit details, history, feedback list, exports |
 | Lead Admin | Their own and their team's hardware (AMD and Wipro), plus items free in the cage | View and export, send requests; no history |
-| User | Hardware assigned to them | View and export, send requests, change their access code |
+| User | Hardware assigned to them | View and export, send requests, accept items given to them, change their password |
 
 ## Development copy and production copy
 
@@ -65,7 +68,7 @@ You need Node.js 20.6 or later and MySQL 8.4.
    npm run init-db:sample
    npm start
    ```
-3. Open `http://localhost:8080` and sign in as `SA001` with code `1001`.
+3. Open `http://localhost:8080` and sign in as `sa001@lab.example` with password `Lab@1001`.
 
 For the full server set-up, with the service, firewall and backups, see [docs/DEPLOY_WINDOWS_SERVER.md](docs/DEPLOY_WINDOWS_SERVER.md).
 
@@ -73,19 +76,19 @@ If the server cannot download packages, use the `hardware-lab-ims-<version>-wind
 
 ## Sample accounts (development copy only)
 
-| Alias | Code | Role | Team |
+| Mail ID | Password | Role | Team |
 |---|---|---|---|
-| SA001 | 1001 | Super Admin | - |
-| AD010 | 2001 | Admin | - |
-| LD200 | 4001 | Lead Admin | IPSi (lead) |
-| LD300 | 4002 | Lead Admin | Team B (sample) (lead) |
-| EN1042 | 3001 | User | IPSi |
-| EN1108 | 3002 | User | IPSi |
-| EN1200 | 3004 | User | Team B (sample) |
-| EN2301 | 3003 | User, waiting for approval | IPSi |
-| EN2200 | - | On the directory only; use it to try **Request access** (mail `en2200@lab.example`, name `Sample New Engineer`) | IPSi |
+| sa001@lab.example | Lab@1001 | Super Admin | - |
+| ad010@lab.example | Lab@2001 | Admin | - |
+| ld200@lab.example | Lab@4001 | Lead Admin | IPSi (lead) |
+| ld300@lab.example | Lab@4002 | Lead Admin | Team B (sample) (lead) |
+| en1042@lab.example | Lab@3001 | User | IPSi |
+| en1108@lab.example | Lab@3002 | User | IPSi |
+| en1200@lab.example | Lab@3004 | User | Team B (sample) |
+| en2301@lab.example | Lab@3003 | User, waiting for approval | IPSi |
+| en2200@lab.example | - | On the directory only; use it to try **Request access** | IPSi |
 
-The sample also has two open requests: EN1042 asks to return `PSU-2K4-021`, and EN1108 needs a debugger (approve it with `DBG-HDT-003` from the cage).
+The sample also has two open requests: EN1042 asks to return `PSU-2K4-021`, and EN1108 needs a debugger (approve it with `DBG-HDT-003` from the cage). `CBL-PCIE-110` is waiting for en1200 to accept it.
 
 The sample has three consignments. `INV-AR-7741` is still open (1 of 4 items, no document yet) so you can try the inward steps: upload any PDF, then scan `MB-SP5-045` and watch the details fill in.
 
@@ -131,10 +134,11 @@ Keep `BACKUP_DIR` on a different drive or a network share from the database.
 ```
 db/schema.sql          MySQL tables
 src/server.js          Web server, security headers, error handling
-src/routes/            API: people (sign-in, accounts, teams, directory), assets, consignments, requests, admin (dashboard, feedback, backup)
+src/routes/            API: people (sign-in, accounts, teams, directory), assets, consignments, handovers (accept/decline), requests, admin (dashboard, feedback, updates, backup)
+src/migrate.js         Brings an older database up to date (runs at every start)
 src/rules.js           Shared rules: roles, statuses, barcode and expiry checks
 src/sample.js          Sample lab for the development copy
-public/                The browser screens (index.html, app.js, app.css)
+public/                The browser screens (index.html, app.js, app.css, barcode-reader.js)
 scripts/               Database set-up, first admin, backup, Windows helper scripts
 test/                  Automated checks
 docs/                  Server deployment guide
@@ -142,8 +146,8 @@ docs/                  Server deployment guide
 
 ## Security notes
 
-- Access codes are stored as salted scrypt hashes, never as plain text.
-- Five wrong codes lock that sign-in for 10 minutes.
+- Passwords are stored as salted scrypt hashes, never as plain text.
+- Five wrong passwords lock that sign-in for 10 minutes.
 - Sign-in sessions are HttpOnly, SameSite=Strict cookies, and every change also needs a header that only this app's pages send.
 - Every check runs on the server, so the browser cannot skip a rule.
 - Uploads are checked by file content (PDF, JPG, PNG only) and stored under random names.

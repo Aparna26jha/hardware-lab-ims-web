@@ -5,7 +5,8 @@ const path = require("node:path");
 const config = require("./config");
 const db = require("./db");
 
-const TABLES = ["teams", "users", "directory", "consignments", "consignment_documents", "assets", "audit_log", "feedback", "hardware_requests"];
+const TABLES = ["teams", "users", "directory", "consignments", "consignment_documents", "assets", "audit_log", "feedback",
+  "hardware_requests", "handovers", "choices"];
 
 function stamp() {
   const now = new Date();
