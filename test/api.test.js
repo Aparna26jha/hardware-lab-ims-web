@@ -540,6 +540,20 @@ test("change own password, backup, and sample reset", async () => {
   assert.ok(settings.rooms.includes("Lab 3B Rack"), "rooms added by Admins survive a sample reset");
 });
 
+test("Super Admin approves every waiting request as User in one step", async () => {
+  const admin = await as("AD010");
+  assert.equal((await admin("POST", "/api/users/approve-all")).status, 403);
+  const sa = await as("SA001");
+  const anon = await session();
+  assert.equal((await anon("POST", "/api/register", { email: mail("EN2200"), requestedRole: "Admin", password: "Secret@12", confirm: "Secret@12" })).status, 200);
+  assert.equal((await sa("POST", "/api/users/approve-all")).data.message, "Approved 2 waiting request(s) as User.");
+  const users = (await sa("GET", "/api/users")).data;
+  assert.equal(users.find((u) => u.empId === "EN2200").role, "User", "asking for Admin still gives User");
+  await as("EN2301");
+  await session(mail("EN2200"), "Secret@12");
+  assert.equal((await sa("POST", "/api/users/approve-all")).data.message, "No requests are waiting.");
+});
+
 test("too many wrong passwords lock the sign-in for a while", async () => {
   const anon = await session();
   for (let i = 0; i < 5; i += 1) await anon("POST", "/api/login", { email: mail("LD300"), password: "Wrong@000" });

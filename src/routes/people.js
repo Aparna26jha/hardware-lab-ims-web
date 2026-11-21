@@ -258,6 +258,14 @@ router.put("/users/:id", superAdmin, async (req, res) => {
   res.json({ message: "Saved " + name + "." });
 });
 
+// Every waiting request becomes an active User; Admin and Lead roles are still given one by one.
+router.post("/users/approve-all", superAdmin, async (req, res) => {
+  const result = await db.query(
+    "UPDATE users SET approval = 'Approved', active = 1, role = 'User' WHERE approval = 'Pending'");
+  const count = result.affectedRows;
+  res.json({ message: count ? "Approved " + count + " waiting request(s) as User." : "No requests are waiting." });
+});
+
 router.post("/users/:id/reject", superAdmin, async (req, res) => {
   const empId = normalizeId(req.params.id);
   if (empId === req.user.emp_id) fail("You cannot reject your own account.");

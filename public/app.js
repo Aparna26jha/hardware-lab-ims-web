@@ -955,8 +955,11 @@ async function accountsHtml() {
       <div class="row"><button class="btn" type="submit">Save</button>
         ${picked.state === "Pending" ? `<button class="btn danger" type="button" data-action="reject-user" data-id="${esc(picked.empId)}">Reject request</button>` : ""}</div>
     </form>` : `<div class="box"><p class="sub">Select an account to approve it, change the role or team, or turn it off.</p></div>`;
+  const waiting = users.filter((u) => u.state === "Pending").length;
   return `
     <h2>Accounts</h2>
+    ${waiting ? `<div class="box ok-box"><span>${waiting} access request(s) waiting.</span>
+      <button class="btn small" type="button" data-action="approve-all-users">Approve all waiting as User</button></div>` : ""}
     <div class="duo wide-left">
       <div class="scroll"><table><thead><tr><th>Name</th><th>Mail ID</th><th>Emp ID</th><th>Role</th><th>Team</th><th>State</th></tr></thead><tbody>
         ${users.map((u) => `<tr class="clickable ${u.empId === state.selectedUser ? "picked" : ""}" data-action="pick-user" data-id="${esc(u.empId)}">
@@ -1495,6 +1498,12 @@ const clickHandlers = {
   "clear-found"() { state.foundCodes = null; return paint(); },
   "pick-user"(el) { state.selectedUser = el.dataset.id; return paint(); },
   "pick-team"(el) { state.selectedTeam = el.dataset.id ? Number(el.dataset.id) : null; return paint(); },
+  async "approve-all-users"() {
+    if (!window.confirm("Approve every waiting request as User? Give Admin or Lead roles afterwards, one by one.")) return;
+    const result = await api("POST", "/api/users/approve-all");
+    state.flash = { text: result.message, kind: "good" };
+    await paint();
+  },
   async "reject-user"(el) {
     const result = await api("POST", "/api/users/" + encodeURIComponent(el.dataset.id) + "/reject");
     state.flash = { text: result.message, kind: "good" };

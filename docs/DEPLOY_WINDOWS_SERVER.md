@@ -193,6 +193,8 @@ Repeat the steps with these differences:
 
 In production, the sample buttons and **Reset sample data** are switched off. Load the real people with **Accounts → Import many people**: open the team list in Excel, select the rows including the header row (Name, Team, Emp ID, Email Address), copy, and paste into the box. Teams that do not exist yet are created automatically. Without a header row, each line is read as `Emp ID, mail ID, full name, team`. Then, on **Teams**, choose each team's Lead Admin and its members.
 
+Each person then opens the IMS, selects **Request access**, enters their mail ID and chooses their own password. On **Accounts**, **Approve all waiting as User** approves everyone waiting at once; give the Admin and Super Admin roles afterwards by selecting those people one by one.
+
 ## Updating to a new version
 
 1. Task Scheduler → right-click `Hardware Lab IMS (dev)` → **End**.
