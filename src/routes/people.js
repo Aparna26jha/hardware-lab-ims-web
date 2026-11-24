@@ -4,6 +4,7 @@ const express = require("express");
 const config = require("../config");
 const db = require("../db");
 const auth = require("../auth");
+const { importPeople } = require("../people-import");
 const { requireUser, requireRole } = auth;
 const {
   ROLES, fail, clean, normalizeId, validEmpId, isMailId, cleanEmail, checkPassword, csvCells
@@ -306,6 +307,15 @@ router.post("/users/create-all", superAdmin, async (req, res) => {
       ? "Created " + accounts.length + " account(s). Save the downloaded file now: the passwords cannot be shown again."
       : "Everyone on the lab directory already has an account.",
     accounts
+  });
+});
+
+router.post("/users/import", superAdmin, async (req, res) => {
+  const result = await importPeople(req.body.text, String(req.body.password ?? ""), req.user.emp_id);
+  res.json({
+    message: "Accounts created: " + result.created + ". Already had an account (password kept, role and team updated): "
+      + result.updated + "." + (result.problems.length ? " Lines skipped: " + result.problems.length + "." : ""),
+    problems: result.problems
   });
 });
 

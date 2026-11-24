@@ -60,6 +60,7 @@ input, select, textarea {
   outline: none;
 }
 input[type="checkbox"] { width: auto; }
+.people-import { margin-bottom: 12px; }
 .pw-wrap { position: relative; display: block; }
 .pw-wrap input { padding-right: 42px; }
 .pw-eye {

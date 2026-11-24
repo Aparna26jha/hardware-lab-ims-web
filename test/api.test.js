@@ -620,6 +620,32 @@ test("a sub-lead (Lead Admin who does not lead the team) sees their own team's h
   assert.ok(!seen.includes("SOC-FPGA-006"), "not Team B's item");
 });
 
+test("Super Admin imports people from a CSV file with one common first password", async () => {
+  const csv = [
+    "\uFEFFName,Team,Emp ID,Email Address,Role,Team Lead",
+    "Import Lead,Import Team,30990001,import.lead@company.com,Super Admin,Yes",
+    "Import Sub,Import Team,30990002,import.sub@company.com,Lead Admin,",
+    "Import Member,Import Team,30990003,import.member@company.com,,",
+    "No Id,Import Team,,no.id@company.com,User,",
+    "Sample Super Admin,,SA001,sa001@lab.example,User,"
+  ].join("\r\n");
+  assert.equal((await (await as("AD010"))("POST", "/api/users/import", { text: csv, password: "Start@2026" })).status, 403);
+  const sa = await as("SA001");
+  assert.match((await sa("POST", "/api/users/import", { text: csv, password: "short" })).data.error, /at least|8 to 64/);
+  const result = (await sa("POST", "/api/users/import", { text: csv, password: "Start@2026" })).data;
+  assert.match(result.message, /Accounts created: 3\. Already had an account .*: 1\. Lines skipped: 1\./);
+  assert.match(result.problems[0], /No Id.*no Emp ID/);
+  const users = (await sa("GET", "/api/users")).data;
+  assert.equal(users.find((u) => u.empId === "SA001").role, "Super Admin", "the importer keeps their own role");
+  assert.equal(users.find((u) => u.empId === "30990002").role, "Lead Admin");
+  assert.equal((await sa("GET", "/api/teams")).data.find((t) => t.name === "Import Team").leadId, "30990001");
+  const member = await session("import.member@company.com", "Start@2026");
+  assert.equal((await member("GET", "/api/me")).data.mustChange, true);
+  const again = (await sa("POST", "/api/users/import", { text: csv, password: "Other@2026" })).data;
+  assert.match(again.message, /Accounts created: 0/);
+  await session("import.member@company.com", "Start@2026");
+});
+
 test("too many wrong passwords lock the sign-in for a while", async () => {
   const anon = await session();
   for (let i = 0; i < 5; i += 1) await anon("POST", "/api/login", { email: mail("LD300"), password: "Wrong@000" });

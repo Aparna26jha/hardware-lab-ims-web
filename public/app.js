@@ -1005,6 +1005,20 @@ async function accountsHtml() {
   const noAccount = directory.filter((d) => !withAccount.has(d.empId) && !withAccount.has(d.email)).length;
   return `
     <h2>Accounts</h2>
+    <form id="people-import-form" class="box people-import">
+      <h3>Import people from CSV</h3>
+      <p class="fine">Everyone in the file gets an account in one go, with the common first password below. Each person must choose their own password at the first sign-in.
+        The first line of the file must be the headings: <span class="mono">Name, Team, Emp ID, Email Address, Role, Team Lead</span>.
+        Role is Super Admin, Admin, Lead Admin or User (blank means User). Write Yes under Team Lead for the team's lead.
+        In Excel: <strong>File → Save As → CSV UTF-8</strong>.</p>
+      <div class="grid">
+        <div><label for="pi-file">CSV file <span class="req">*</span></label><input id="pi-file" type="file" accept=".csv,text/csv"></div>
+        <div><label for="pi-password">Common first password <span class="req">*</span></label>
+          <input id="pi-password" type="password" maxlength="64" autocomplete="new-password" placeholder="at least ${s.passwordMin} characters"></div>
+      </div>
+      <p class="fine">People who already have an account keep their password; only their name, team and role are updated.</p>
+      <div class="row"><button class="btn" type="submit">Import and create accounts</button></div>
+    </form>
     ${noAccount ? `<div class="box ok-box"><span>${noAccount} people on the lab directory have no account yet.</span>
       <button class="btn small" type="button" data-action="create-all-users">Create accounts with first passwords</button>
       <span class="fine">Downloads a file with each person's first password. Give each person only their own row; they choose their own password at the first sign-in.</span></div>` : ""}
@@ -1416,6 +1430,16 @@ const submitHandlers = {
   async "import-form"() {
     const result = await api("POST", "/api/directory/import", { text: val("imp-text") });
     if (result.problems.length) toast(result.problems.slice(0, 5).join(" "), "bad", result.problems.length + " line(s) skipped");
+    state.flash = { text: result.message, kind: "good" };
+    await paint();
+  },
+  async "people-import-form"() {
+    const file = document.getElementById("pi-file").files[0];
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      throw new Error("Choose a .csv file. In Excel use File → Save As → CSV UTF-8.");
+    }
+    const result = await api("POST", "/api/users/import", { text: await file.text(), password: val("pi-password") });
+    if (result.problems.length) toast(result.problems.slice(0, 6).join(" "), "warn", result.problems.length + " line(s) skipped");
     state.flash = { text: result.message, kind: "good" };
     await paint();
   },

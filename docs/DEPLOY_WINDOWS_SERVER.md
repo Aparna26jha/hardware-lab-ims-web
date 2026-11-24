@@ -190,21 +190,20 @@ Production uses the same files as development. Only `.env` and the database are 
 | Database (step 4) | `ims_dev` | `ims_prod` (`GRANT ALL ON ims_prod.* TO 'ims_app'@'localhost';`) |
 | `.env` | `APP_ENV=development`, `PORT=8080` | `APP_ENV=production`, `PORT=8081` |
 | Folders | `...\dev\...` | `...\prod\...` |
-| Step 8 | `npm run init-db:sample` | `npm run init-db`, then `npm run import-people -- people.csv` (below) |
+| Step 8 | `npm run init-db:sample` | `npm run init-db`, then `npm run create-admin` for the first Super Admin, then import the people (below) |
 | Task names | `(dev)` | `(prod)` |
 
 ### Loading the real people with one common first password
 
-1. Make `people.csv` in the production folder (Notepad → **Save as** → file name `people.csv`, encoding **UTF-8**). First line:
+1. Make `people.csv` (Notepad → **Save as** → file name `people.csv`, encoding **UTF-8**). First line:
    ```
    Name,Team,Emp ID,Email Address,Role,Team Lead
    ```
    then one line per person. **Role** is `Super Admin`, `Admin`, `Lead Admin` or `User` (blank means User). Write `Yes` under **Team Lead** for the person shown as the team's lead.
-2. In Command Prompt, in the production folder:
-   ```
-   npm run import-people -- people.csv
-   ```
-   It asks for the common first password, then prints how many accounts were made and which lines were skipped (for example a missing Emp ID).
+   From Excel: **File → Save As → CSV UTF-8**.
+2. Sign in as the Super Admin, open **Accounts → Import people from CSV**, choose the file, type the common first password, and select **Import and create accounts**. It shows how many accounts were made and which lines were skipped (for example a missing Emp ID).
+
+   The same can be done in Command Prompt, in the production folder: `npm run import-people -- people.csv`.
 3. Tell everyone the web address and the common first password. At the first sign-in each person must choose their own password before they can do anything else. Ask everyone to do this on the same day: until they do, anyone who knows the common password could sign in as them.
 4. Delete `people.csv` from the server afterwards.
 
