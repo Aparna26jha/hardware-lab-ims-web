@@ -23,13 +23,15 @@ const ASSET_SELECT = `
     LEFT JOIN handovers ho ON ho.barcode = a.barcode AND ho.state = 'Waiting'
     LEFT JOIN users pu ON pu.emp_id = ho.to_emp_id`;
 
-// Which assets a person may see. Leads see their team's hardware and what is free in the cage.
+// Which assets a person may see. Leads see the hardware of their own team and of the teams they lead,
+// and what is free in the cage. A team can have several Lead Admins (sub-leads).
 function scopeSql(user) {
   if (isCustodian(user)) return { sql: "1 = 1", params: [] };
   if (user.role === "Lead Admin") {
     return {
-      sql: "(a.holder_emp_id = ? OR t.lead_emp_id = ? OR (a.holder_emp_id IS NULL AND a.status = 'Available in Lab'))",
-      params: [user.emp_id, user.emp_id]
+      sql: `(a.holder_emp_id = ? OR t.lead_emp_id = ? OR (h.team_id IS NOT NULL AND h.team_id = ?)
+             OR (a.holder_emp_id IS NULL AND a.status = 'Available in Lab'))`,
+      params: [user.emp_id, user.emp_id, user.team_id]
     };
   }
   return { sql: "a.holder_emp_id = ?", params: [user.emp_id] };

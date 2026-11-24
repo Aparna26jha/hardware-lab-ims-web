@@ -610,6 +610,16 @@ test("development copy: the sample accounts are put back at start, other data is
   assert.equal((await sa("GET", "/api/users")).data.find((u) => u.empId === "LD200").role, "Lead Admin");
 });
 
+test("a sub-lead (Lead Admin who does not lead the team) sees their own team's hardware", async () => {
+  const sa = await as("SA001");
+  const ipsi = (await sa("GET", "/api/teams")).data.find((t) => t.name === "IPSi");
+  assert.equal((await sa("PUT", "/api/users/EN1108", { role: "Lead Admin", teamId: ipsi.id, active: true })).status, 200);
+  const sub = await as("EN1108");
+  const seen = (await sub("GET", "/api/assets")).data.map((a) => a.barcode);
+  assert.ok(seen.includes("MB-7800X-001"), "an IPSi colleague's item");
+  assert.ok(!seen.includes("SOC-FPGA-006"), "not Team B's item");
+});
+
 test("too many wrong passwords lock the sign-in for a while", async () => {
   const anon = await session();
   for (let i = 0; i < 5; i += 1) await anon("POST", "/api/login", { email: mail("LD300"), password: "Wrong@000" });

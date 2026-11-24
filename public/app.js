@@ -1073,7 +1073,7 @@ async function teamsHtml() {
     </div>` : "";
   return `
     <h2>Teams</h2>
-    <p class="sub">A Lead Admin sees the hardware of every person in the teams they lead. Pick a team to choose its lead and its people.</p>
+    <p class="sub">A Lead Admin sees the hardware of every person in their own team and in the teams they lead. Pick a team to choose its lead and its people.</p>
     <div class="duo wide-left">
       <div class="scroll"><table><thead><tr><th>Team</th><th>Lead</th><th class="right">People</th></tr></thead><tbody>
         ${teams.map((t) => `<tr class="clickable ${t.id === state.selectedTeam ? "picked" : ""}" data-action="pick-team" data-id="${t.id}">

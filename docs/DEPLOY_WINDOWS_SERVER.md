@@ -180,9 +180,9 @@ If SharePoint is used later, sync only the backup folder there. The live MySQL d
   ```
 - **Uploaded documents:** copy `BACKUP_DIR\uploads` back to `UPLOAD_DIR`.
 
-## Step 13: The production copy (later)
+## Step 13: The production copy
 
-Repeat the steps with these differences:
+Production uses the same files as development. Only `.env` and the database are different, so the sample people are never in it. Repeat the steps with these differences:
 
 | | Development | Production |
 |---|---|---|
@@ -190,8 +190,29 @@ Repeat the steps with these differences:
 | Database (step 4) | `ims_dev` | `ims_prod` (`GRANT ALL ON ims_prod.* TO 'ims_app'@'localhost';`) |
 | `.env` | `APP_ENV=development`, `PORT=8080` | `APP_ENV=production`, `PORT=8081` |
 | Folders | `...\dev\...` | `...\prod\...` |
-| Step 8 | `npm run init-db:sample` | `npm run init-db`, then `npm run create-admin` for the first Super Admin |
+| Step 8 | `npm run init-db:sample` | `npm run init-db`, then `npm run import-people -- people.csv` (below) |
 | Task names | `(dev)` | `(prod)` |
+
+### Loading the real people with one common first password
+
+1. Make `people.csv` in the production folder (Notepad → **Save as** → file name `people.csv`, encoding **UTF-8**). First line:
+   ```
+   Name,Team,Emp ID,Email Address,Role,Team Lead
+   ```
+   then one line per person. **Role** is `Super Admin`, `Admin`, `Lead Admin` or `User` (blank means User). Write `Yes` under **Team Lead** for the person shown as the team's lead.
+2. In Command Prompt, in the production folder:
+   ```
+   npm run import-people -- people.csv
+   ```
+   It asks for the common first password, then prints how many accounts were made and which lines were skipped (for example a missing Emp ID).
+3. Tell everyone the web address and the common first password. At the first sign-in each person must choose their own password before they can do anything else. Ask everyone to do this on the same day: until they do, anyone who knows the common password could sign in as them.
+4. Delete `people.csv` from the server afterwards.
+
+Running the command again is safe: people who already have an account keep their password; only their name, team and role are updated from the file. To add someone later, add their line and run it again, or use **Accounts** in the app.
+
+If someone forgets their password, a Super Admin selects them on **Accounts** → **Give a new first password** and gives it only to that person.
+
+A **Lead Admin** sees the hardware of everyone in their own team, so a team can have several sub-leads.
 
 In production, the sample buttons and **Reset sample data** are switched off. Load the real people with **Accounts → Import many people**: open the team list in Excel, select the rows including the header row (Name, Team, Emp ID, Email Address), copy, and paste into the box. Teams that do not exist yet are created automatically. Without a header row, each line is read as `Emp ID, mail ID, full name, team`. Then, on **Teams**, choose each team's Lead Admin and its members.
 

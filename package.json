@@ -12,6 +12,7 @@
     "init-db": "node --env-file=.env scripts/init-db.js",
     "init-db:sample": "node --env-file=.env scripts/init-db.js --sample",
     "create-admin": "node --env-file=.env scripts/create-admin.js",
+    "import-people": "node --env-file=.env scripts/import-people.js",
     "backup": "node --env-file=.env scripts/backup.js",
     "test": "node --env-file=.env --test"
   },

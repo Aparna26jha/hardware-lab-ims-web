@@ -128,6 +128,7 @@ Keep `BACKUP_DIR` on a different drive or a network share from the database.
 | `npm run init-db` | Creates any missing tables (safe to run again after an update) |
 | `npm run init-db:sample` | The same, then loads the sample lab into an empty database, or puts the sample accounts back in an existing one (development copy only) |
 | `npm run create-admin` | Adds the first Super Admin on a real (production) database |
+| `npm run import-people -- people.csv` | Loads the real people from a CSV file and gives new accounts one common first password (see the Windows guide, step 13) |
 | `npm run backup` | Takes one backup now |
 | `npm test` | Runs the automated checks against the `ims_test` database |
 
