@@ -382,6 +382,7 @@ function loginHtml() {
       ${flashHtml()}
       ${demo}
       <p class="fine">${esc(versionText())}</p>
+      <p class="credit">Developed by <strong>Aparna Jha</strong></p>
     </section></div>`;
 }
 
@@ -408,13 +409,19 @@ function firstPasswordHtml() {
 
 function registerHtml() {
   const s = state.settings || { roles: ["User"], passwordMin: 8 };
+  const selfAdd = s.showSampleAccounts ? `
+        <p class="fine">Not on the lab directory yet? Fill in your full name and Emp ID as well, and you will be added.</p>
+        <label for="reg-name">Full name</label>
+        <input id="reg-name" maxlength="120" autocomplete="name">
+        <label for="reg-emp">Emp ID</label>
+        <input id="reg-emp" maxlength="32">` : "";
   return `
     <div class="auth-screen"><section class="card">
       <div class="brand"><div class="mark">IMS</div><div><h1>Request access</h1>
         <div class="sub">Use the mail ID the Super Admin added to the lab directory.</div></div></div>
       <form id="register-form" autocomplete="off">
         <label for="reg-email">Mail ID <span class="req">*</span></label>
-        <input id="reg-email" type="email" maxlength="120" placeholder="name@wipro.com" autocomplete="username">
+        <input id="reg-email" type="email" maxlength="120" placeholder="name@wipro.com" autocomplete="username">${selfAdd}
         <label for="reg-role">Role you need</label><select id="reg-role">${options(s.roles, "User")}</select>
         <label for="reg-password">Choose a password (at least ${s.passwordMin} characters) <span class="req">*</span></label>
         <input id="reg-password" type="password" maxlength="64" autocomplete="new-password">
@@ -1286,7 +1293,8 @@ const submitHandlers = {
   },
   async "register-form"() {
     const result = await api("POST", "/api/register", {
-      email: val("reg-email"), requestedRole: val("reg-role"), password: val("reg-password"), confirm: val("reg-confirm")
+      email: val("reg-email"), requestedRole: val("reg-role"), password: val("reg-password"), confirm: val("reg-confirm"),
+      name: val("reg-name"), empId: val("reg-emp")
     });
     state.view = "login";
     state.flash = { text: result.message, kind: "good" };

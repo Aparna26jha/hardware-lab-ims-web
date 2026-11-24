@@ -1,6 +1,7 @@
 "use strict";
 
 const express = require("express");
+const config = require("../config");
 const db = require("../db");
 const auth = require("../auth");
 const { requireUser, requireRole } = auth;
@@ -82,15 +83,37 @@ router.get("/me", requireUser, async (req, res) => {
   });
 });
 
+// Development copy only: someone who is not on the directory yet adds themselves with their name and Emp ID.
+async function addSelfToDirectory(email, body) {
+  const name = clean(body.name, 120);
+  const empId = normalizeId(body.empId);
+  if (!name || !empId) {
+    fail("This mail ID is not on the lab directory yet. Fill in your full name and Emp ID as well, and you will be added.");
+  }
+  if (!validEmpId(empId)) fail("Emp ID can use letters, numbers and - only.");
+  const taken = await db.one("SELECT emp_id FROM directory WHERE emp_id = ? UNION SELECT emp_id FROM users WHERE emp_id = ?",
+    [empId, empId]);
+  if (taken) fail("Emp ID " + empId + " is already on the lab directory with another mail ID.");
+  await db.query("INSERT INTO directory (emp_id, email, emp_name) VALUES (?, ?, ?)", [empId, email, name]);
+  return db.one("SELECT * FROM directory WHERE emp_id = ?", [empId]);
+}
+
 router.post("/register", async (req, res) => {
   const email = cleanEmail(req.body.email);
   const requestedRole = ROLES.includes(req.body.requestedRole) ? req.body.requestedRole : "User";
   const password = String(req.body.password ?? "");
   if (!isMailId(email)) fail("Enter your mail ID in the form name@wipro.com.");
   checkPassword(password, String(req.body.confirm ?? ""));
-  const listed = await db.one("SELECT * FROM directory WHERE email = ?", [email]);
+  let listed = await db.one("SELECT * FROM directory WHERE email = ?", [email]);
+  if (!listed && config.isDevelopment) listed = await addSelfToDirectory(email, req.body);
   if (!listed) fail("This mail ID is not on the lab directory. Ask a Super Admin to add you first.");
   const existing = await db.one("SELECT approval FROM users WHERE emp_id = ? OR email = ?", [listed.emp_id, email]);
+  if (existing && existing.approval === "Rejected" && config.isDevelopment) {
+    await db.query(
+      `UPDATE users SET approval = 'Pending', active = 0, requested_role = ?, access_hash = ?, must_change = 0
+        WHERE emp_id = ?`, [requestedRole, auth.hashCode(password), listed.emp_id]);
+    return res.json({ message: "Request sent again for " + email + ". A Super Admin must approve it before you can sign in." });
+  }
   if (existing) {
     fail(existing.approval === "Rejected"
       ? "This mail ID was not approved. Ask a Super Admin to review it again."

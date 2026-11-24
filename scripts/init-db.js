@@ -13,12 +13,14 @@ async function main() {
   if (changes.length) console.log("Database brought up to date: " + changes.join(", ") + ".");
   console.log("Tables are ready in database " + config.db.database + ".");
 
-  if (process.argv.includes("--sample")) {
-    const { loadSample } = require("../src/sample");
-    const loaded = await loadSample(false);
-    console.log(loaded
-      ? "Sample data loaded. Sign in as sa001@lab.example with password Lab@1001."
-      : "The database already has accounts, so the sample data was not loaded.");
+  if (process.argv.includes("--sample") && !config.isDevelopment) {
+    console.log("Sample data is only for the development copy (APP_ENV=development). Nothing was loaded.");
+  } else if (process.argv.includes("--sample")) {
+    const { prepareSampleAccounts } = require("../src/sample");
+    const done = await prepareSampleAccounts();
+    if (done) console.log("Sample data: " + done + ".");
+    console.log("Sign in as sa001@lab.example with password Lab@1001. "
+      + "To get the whole sample lab back, use Accounts > Reset sample data.");
   } else {
     const db = require("../src/db");
     const admins = await db.one("SELECT COUNT(*) AS n FROM users WHERE role = 'Super Admin' AND active = 1");

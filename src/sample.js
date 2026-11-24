@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const config = require("./config");
 const db = require("./db");
-const { hashCode } = require("./auth");
+const { hashCode, codeMatches } = require("./auth");
 
 // A one-page PDF that says "Sample invoice ..." so the demo consignments have a document to open.
 function samplePdf(text) {
@@ -202,4 +202,55 @@ async function loadSample(reset) {
   }
 }
 
-module.exports = { loadSample };
+// Development copy only. An empty database gets the whole sample lab. An existing one keeps its data,
+// but the sample accounts are put back with the passwords shown on the sign-in buttons (older versions
+// used other passwords, and testers may have turned accounts off). Returns what was done.
+async function prepareSampleAccounts() {
+  if (await loadSample(false)) return "the sample lab was loaded";
+  const fixed = [];
+  const conn = await db.pool.getConnection();
+  try {
+    const teamIds = {};
+    for (const team of TEAMS) {
+      await conn.query("INSERT IGNORE INTO teams (team_name) VALUES (?)", [team.name]);
+      const [[row]] = await conn.query("SELECT team_id, lead_emp_id FROM teams WHERE team_name = ?", [team.name]);
+      teamIds[team.name] = row.team_id;
+      if (!row.lead_emp_id) await conn.query("UPDATE teams SET lead_emp_id = ? WHERE team_id = ?", [team.lead, row.team_id]);
+    }
+    for (const [empId, name, role, password, team, approval] of USERS) {
+      const email = empId.toLowerCase() + "@lab.example";
+      const teamId = team ? teamIds[team] : null;
+      const active = approval === "Approved" ? 1 : 0;
+      await conn.query("INSERT IGNORE INTO directory (emp_id, email, emp_name, team_id, added_by) VALUES (?, ?, ?, ?, 'SA001')",
+        [empId, email, name, teamId]);
+      const [[user]] = await conn.query("SELECT * FROM users WHERE emp_id = ?", [empId]);
+      if (!user) {
+        await conn.query(
+          `INSERT INTO users (emp_id, emp_name, email, role, requested_role, team_id, approval, active, access_hash)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [empId, name, email, role, role, teamId, approval, active, hashCode(password)]);
+        fixed.push(empId);
+        continue;
+      }
+      const ready = user.email === email && !user.must_change && codeMatches(password, user.access_hash)
+        && (approval !== "Approved" || (user.approval === "Approved" && user.active && user.role === role));
+      if (ready) continue;
+      await conn.query(
+        `UPDATE users SET email = ?, access_hash = ?, must_change = 0,
+                role = IF(? = 'Approved', ?, role), approval = IF(? = 'Approved', 'Approved', approval),
+                active = IF(? = 'Approved', 1, active)
+          WHERE emp_id = ?`,
+        [email, hashCode(password), approval, role, approval, approval, empId]);
+      fixed.push(empId);
+    }
+    for (const [empId, name, team] of EXTRA_DIRECTORY) {
+      await conn.query("INSERT IGNORE INTO directory (emp_id, email, emp_name, team_id, added_by) VALUES (?, ?, ?, ?, 'SA001')",
+        [empId, empId.toLowerCase() + "@lab.example", name, teamIds[team]]);
+    }
+  } finally {
+    conn.release();
+  }
+  return fixed.length ? "sample accounts set back to their listed passwords: " + fixed.join(", ") : "";
+}
+
+module.exports = { loadSample, prepareSampleAccounts };

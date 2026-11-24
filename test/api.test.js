@@ -18,7 +18,8 @@ process.env.BACKUP_DIR = path.join(scratch, "backups");
 const mysql = require("mysql2/promise");
 const config = require("../src/config");
 const db = require("../src/db");
-const { loadSample } = require("../src/sample");
+const { loadSample, prepareSampleAccounts } = require("../src/sample");
+const { hashCode } = require("../src/auth");
 const { createApp } = require("../src/server");
 const { upgradeTables } = require("../src/migrate");
 
@@ -364,7 +365,13 @@ test("feedback: merged Issue / Bug, Other needs a description, admin list", asyn
 test("request access by mail ID, approve with a team, Excel import, team members and new leads", async () => {
   const anon = await session();
   const unknown = await anon("POST", "/api/register", { email: "stranger@lab.example", password: "Secret@12", confirm: "Secret@12" });
-  assert.match(unknown.data.error, /not on the lab directory/);
+  assert.match(unknown.data.error, /not on the lab directory yet\. Fill in your full name and Emp ID/);
+  const takenId = await anon("POST", "/api/register",
+    { email: "stranger@lab.example", name: "New Person", empId: "EN1042", password: "Secret@12", confirm: "Secret@12" });
+  assert.match(takenId.data.error, /already on the lab directory/);
+  const selfAdded = await anon("POST", "/api/register",
+    { email: "stranger@lab.example", name: "New Person", empId: "en 9901", password: "Secret@12", confirm: "Secret@12" });
+  assert.equal(selfAdded.status, 200, JSON.stringify(selfAdded.data));
   const weak = await anon("POST", "/api/register", { email: "en2200@lab.example", password: "5000", confirm: "5000" });
   assert.match(weak.data.error, /at least|8 to 64/);
   const ok = await anon("POST", "/api/register", { email: "EN2200@lab.example", password: "Secret@12", confirm: "Secret@12" });
@@ -375,6 +382,10 @@ test("request access by mail ID, approve with a team, Excel import, team members
   const ipsi = (await sa("GET", "/api/teams")).data.find((t) => t.name === "IPSi");
   assert.equal((await sa("PUT", "/api/users/EN2200", { role: "User", teamId: ipsi.id, active: true })).status, 200);
   await session("en2200@lab.example", "Secret@12");
+  assert.equal((await sa("POST", "/api/users/EN9901/reject")).status, 200);
+  const again = await anon("POST", "/api/register", { email: "stranger@lab.example", password: "Other@123", confirm: "Other@123" });
+  assert.match(again.data.message, /Request sent again/, "a rejected request can be sent again in the development copy");
+  assert.equal((await sa("POST", "/api/users/EN9901/reject")).status, 200);
   const selfOff = await sa("PUT", "/api/users/SA001", { role: "Super Admin", teamId: "", active: false });
   assert.match(selfOff.data.error, /own account/);
 
@@ -581,6 +592,22 @@ test("accounts with first passwords: only choosing a new password works until it
   const again = await session("first.one@company.com", reset.password);
   assert.equal((await again("GET", "/api/me")).data.mustChange, true);
   assert.match((await sa("POST", "/api/users/SA001/new-password")).data.error, /My account/);
+});
+
+test("development copy: the sample accounts are put back at start, other data is kept", async () => {
+  const conn = await mysql.createConnection(config.db);
+  await conn.query("UPDATE users SET access_hash = ? WHERE emp_id = 'SA001'", [hashCode("1001")]);
+  await conn.query("UPDATE users SET active = 0, must_change = 1 WHERE emp_id = 'EN1042'");
+  await conn.query("UPDATE users SET role = 'User' WHERE emp_id = 'LD200'");
+  await conn.query("DELETE FROM users WHERE emp_id = 'AD010'");
+  await conn.query("UPDATE users SET access_hash = ? WHERE emp_id = 'EN2301'", [hashCode("3003")]);
+  await conn.end();
+  assert.equal(await prepareSampleAccounts(), "sample accounts set back to their listed passwords: SA001, AD010, LD200, EN1042, EN2301");
+  assert.equal(await prepareSampleAccounts(), "", "nothing to do the second time");
+  for (const empId of ["SA001", "AD010", "LD200", "EN1042", "EN2301"]) await as(empId);
+  const sa = await as("SA001");
+  assert.equal((await sa("GET", "/api/assets")).data.length > 0, true);
+  assert.equal((await sa("GET", "/api/users")).data.find((u) => u.empId === "LD200").role, "Lead Admin");
 });
 
 test("too many wrong passwords lock the sign-in for a while", async () => {

@@ -88,6 +88,8 @@ If the server cannot download packages, use the `hardware-lab-ims-<version>-wind
 | en2301@lab.example | Lab@3003 | User, waiting for approval | IPSi |
 | en2200@lab.example | - | On the directory only; use it to try **Request access** | IPSi |
 
+Each time the development copy starts, it puts these accounts back with the passwords above, so they always work even on a database made by an older version. Other data is kept. In the development copy, **Request access** also works for a mail ID that is not on the directory: fill in the full name and Emp ID as well.
+
 The sample also has two open requests: EN1042 asks to return `PSU-2K4-021`, and EN1108 needs a debugger (approve it with `DBG-HDT-003` from the cage). `CBL-PCIE-110` is waiting for en1200 to accept it.
 
 The sample has three consignments. `INV-AR-7741` is still open (1 of 4 items, no document yet) so you can try the inward steps: upload any PDF, then scan `MB-SP5-045` and watch the details fill in.
@@ -124,7 +126,7 @@ Keep `BACKUP_DIR` on a different drive or a network share from the database.
 |---|---|
 | `npm start` | Starts the IMS |
 | `npm run init-db` | Creates any missing tables (safe to run again after an update) |
-| `npm run init-db:sample` | The same, then loads the sample lab into an empty database |
+| `npm run init-db:sample` | The same, then loads the sample lab into an empty database, or puts the sample accounts back in an existing one (development copy only) |
 | `npm run create-admin` | Adds the first Super Admin on a real (production) database |
 | `npm run backup` | Takes one backup now |
 | `npm test` | Runs the automated checks against the `ims_test` database |

@@ -61,6 +61,10 @@ async function start() {
   await db.query("SELECT 1");
   const changes = await upgradeTables(db.pool);
   if (changes.length) log("Database brought up to date: " + changes.join(", ") + ".");
+  if (config.isDevelopment) {
+    const sample = await require("./sample").prepareSampleAccounts();
+    if (sample) log("Development copy: " + sample + ".");
+  }
   await db.query("DELETE FROM sessions WHERE expires_at < NOW()");
   const app = createApp();
   app.listen(config.port, config.host, () => {

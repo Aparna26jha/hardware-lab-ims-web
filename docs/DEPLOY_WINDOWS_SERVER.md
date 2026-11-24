@@ -111,7 +111,7 @@ For the development copy, with sample data to try everything:
 npm run init-db:sample
 ```
 
-It prints `Tables are ready` and `Sample data loaded`.
+It prints `Tables are ready`. On a new database it also loads the sample lab. On an existing database it keeps the data and only puts the sample accounts back with their listed passwords (`npm start` does the same check every time in the development copy).
 
 ## Step 9: Try it
 
@@ -122,6 +122,8 @@ npm start
 It prints `Hardware Lab IMS v3.0.0 (development) is running on port 8080`. On the server, open Edge at `http://localhost:8080` and sign in as `sa001@lab.example`, password `Lab@1001`.
 
 Press **Ctrl+C** in the Command Prompt to stop it again.
+
+If a sample sign-in says "Too many wrong tries", wait 10 minutes or stop and start the IMS again.
 
 ## Step 10: Open the port for the lab network
 
