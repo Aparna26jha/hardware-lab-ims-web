@@ -60,6 +60,15 @@ input, select, textarea {
   outline: none;
 }
 input[type="checkbox"] { width: auto; }
+.pw-wrap { position: relative; display: block; }
+.pw-wrap input { padding-right: 42px; }
+.pw-eye {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  width: 30px; height: 30px; display: grid; place-items: center;
+  border: 0; border-radius: 8px; background: transparent; color: var(--muted); padding: 0;
+}
+.pw-eye:hover, .pw-eye:focus-visible { background: var(--chip); color: var(--teal); outline: none; }
+.pw-eye svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 textarea { min-height: 90px; resize: vertical; }
 input:focus, select:focus, textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(12, 92, 86, 0.15); }
 input:disabled, select:disabled, textarea:disabled { background: #eef2f0; color: var(--muted); }

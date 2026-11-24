@@ -1685,6 +1685,33 @@ const clickHandlers = {
   "close-modal-back"(el, event) { if (event.target === el) closeModal(); }
 };
 
+const EYE_OPEN = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const EYE_SHUT = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M3 3l18 18"/></svg>`;
+
+// Every password box gets an eye button that shows or hides what was typed.
+function addPasswordEyes(root) {
+  for (const input of root.querySelectorAll('input[type="password"]:not([data-eye])')) {
+    input.dataset.eye = "1";
+    const wrap = document.createElement("span");
+    wrap.className = "pw-wrap";
+    input.replaceWith(wrap);
+    wrap.innerHTML = `<button type="button" class="pw-eye" data-action="toggle-password" aria-label="Show password" title="Show password">${EYE_OPEN}</button>`;
+    wrap.prepend(input);
+  }
+}
+
+new MutationObserver(() => addPasswordEyes(document.body)).observe(document.body, { childList: true, subtree: true });
+
+clickHandlers["toggle-password"] = (el) => {
+  const input = el.parentElement.querySelector("input");
+  const show = input.type === "password";
+  input.type = show ? "text" : "password";
+  el.innerHTML = show ? EYE_SHUT : EYE_OPEN;
+  el.title = show ? "Hide password" : "Show password";
+  el.setAttribute("aria-label", el.title);
+  input.focus();
+};
+
 document.addEventListener("click", async (event) => {
   const el = event.target.closest("[data-action]");
   if (!el) return;
